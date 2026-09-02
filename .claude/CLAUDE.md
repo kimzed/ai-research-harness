@@ -1,8 +1,8 @@
 # AI Research Harness -- Project Agent Instructions
 
-This file states two conventions that every later story in this repo depends
-on. Both are load-bearing: read them before writing any code or making any
-commit here.
+This file states three conventions that every later story in this repo
+depends on. All are load-bearing: read them before writing any code or
+making any commit here.
 
 ## Scoped-commit convention (CAP-9 / AD-9)
 
@@ -63,3 +63,35 @@ format -- one canonical format, not "or a timestamp":
 - CAP-9, AD-9, AD-7, and PRD counter-metric SM-C1 are canonically defined
   in SPEC.md in the harness planning repo (the sibling planning repo's
   `_bmad-output/specs/spec-ai-research-harness/SPEC.md`).
+
+## Bibliography read + citation-key convention (CAP-1/CAP-2)
+
+`manuscript/references.bib` is Better BibTeX's one-directional export from
+Zotero (Zotero -> BBT -> `references.bib`). Claude Code only ever reads it.
+
+- Always re-read `manuscript/references.bib` fresh from disk, in the same
+  turn, immediately before validating or emitting any `\cite{key}` -- never
+  rely on an earlier-session or cached view of the file's contents. A paper
+  filed into Zotero can appear in a fresh export at any time; a stale view
+  is not a valid basis for a citation.
+- Never write a `\cite{key}` into any `.tex` file unless `key` is present
+  in that same fresh read. If the key isn't there, don't invent, guess, or
+  hand-type a plausible-looking one -- tell the researcher no such entry
+  exists yet.
+- Never hand-edit the bibliographic content of `manuscript/references.bib`,
+  under any circumstances -- it is a generated export, not a hand-authored
+  file. Any addition or correction to the bibliography goes into Zotero
+  itself (via the researcher, or a later story's Zotero-filing capability),
+  never into the `.bib` file's contents. This is about content, not git:
+  committing the file after Zotero/BBT has updated it on disk is expected
+  and normal, governed by the scoped-commit convention above like any other
+  file -- it is not the kind of "edit" this rule forbids.
+- Never invent, rename, or otherwise touch a citation key -- Better BibTeX
+  owns key generation entirely; Claude Code only ever reads the keys it
+  produces.
+- If `references.bib` has zero entries, or is missing/unreadable, when a
+  citation is needed, HALT and ask the researcher whether to wait for a BBT
+  export or proceed some other way -- never fabricate a key to fill the gap.
+- CAP-1, CAP-2, and AD-2/AD-4/AD-6 are canonically defined in SPEC.md /
+  ARCHITECTURE-SPINE.md in the harness planning repo (the sibling planning
+  repo's `_bmad-output/specs/spec-ai-research-harness/`).

@@ -75,21 +75,18 @@ sudo /opt/Zotero_linux-x86_64/set_launcher_icon
 /opt/Zotero_linux-x86_64/zotero  # first run
 ```
 
-**Installed on this machine:** Zotero **6.0.35**, at `/opt/zotero`.
-⚠️ **Action needed:** the specs repo's `SPEC.md` Zotero-read-path Option B (`pyzotero` against the local API, no API key) needs **Zotero 7** — this machine is still on 6. Upgrade before starting story 5/6 work, or commit to Option A (`zotero-mcp`) instead, which doesn't have that version constraint. Neither is picked yet (open question).
+**Installed on this machine (2026-09-02):** Zotero **10.0.1**, at `/opt/zotero` — upgraded from 6.0.35 alongside story 3, since Better BibTeX's current release requires Zotero ≥8.0.1. This also satisfies the `pyzotero`/local-API version requirement (needs Zotero 7+); the Option A vs Option B read-path choice itself remains open (see below).
 
 **Install Better BibTeX:**
-1. Download the latest `.xpi` from https://github.com/retorque/zotero-better-bibtex/releases
+1. Download the latest `.xpi` from https://github.com/retorquere/zotero-better-bibtex/releases
 2. In Zotero: `Tools → Add-ons → ⚙ (gear icon) → Install Add-on From File…` → select the `.xpi`.
-3. Right-click your library/collection → *Export* → translator **Better BibTeX**, tick **Keep updated** → point the export at `manuscript/references.bib` in this repo.
+3. Right-click your library/collection → *Export* → translator **Better BibLaTeX** (not plain "Better BibTeX" — its "Keep updated" checkbox is missing/bugged in current BBT releases, and `manuscript/main.tex` uses `biblatex`, which expects BibLaTeX-flavored fields like `date`/`journaltitle` anyway), tick **Keep updated** → point the export at `manuscript/references.bib` in this repo.
 
-Not yet installed/configured on this machine — do this alongside story 3 (Bibliography read + citation emission).
+**Installed and configured on this machine (2026-09-02):** confirmed working as part of story 3 (Bibliography read + citation emission) — `manuscript/references.bib` now carries a live Better-BibTeX "Keep updated" export (one entry so far, key `vanherzeleMonitoringToolProvision2003a`), and a fresh read of it round-tripped successfully through a real `\cite{key}` and a clean `latexmk`/`biber` compile.
 
 ---
 
 ## Open items
 
-- **Zotero 7 upgrade** — needed for the `pyzotero`/local-API read path (see §3 above).
-- **Zotero read-path choice** — `zotero-mcp` (Option A, batteries-included) vs `pyzotero` (Option B, no key) — undecided; both pair with Better BibTeX regardless.
-- **Better BibTeX** — not yet installed; do alongside story 3.
+- **Zotero read-path choice** — `zotero-mcp` (Option A, batteries-included) vs `pyzotero` (Option B, no key) — undecided; both pair with Better BibTeX regardless. Zotero is now on 10.0.1, so neither option is version-blocked any more.
 - **Windows/pilot setup** — deferred by design; not covered here.
