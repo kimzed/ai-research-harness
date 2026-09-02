@@ -25,7 +25,7 @@ paths it wrote or changed in that turn.
   and reverted from git history alone" actually true, rather than
   incidental.
 
-`data/` and `.env` are gitignored and must never be committed, under any
+`/data/` and `.env*` are gitignored and must never be committed, under any
 circumstances (AD-9).
 
 ## Generated-artifact provenance format (AD-7)
