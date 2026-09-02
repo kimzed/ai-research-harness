@@ -1,19 +1,31 @@
 # Data & secrets (AD-9) -- never committed
-data/
-.env
+/data/
+.env*
 
-# LaTeX build artifacts
-*.aux
-*.bbl
-*.bcf
-*.blg
-*.fdb_latexmk
-*.fls
-*.log
-*.out
-*.run.xml
-*.synctex.gz
-*.toc
-*.nav
-*.snm
-*.vrb
+# LaTeX build artifacts (scoped to manuscript/ so they can't accidentally
+# catch e.g. future analysis/outputs/ log files)
+manuscript/**/*.aux
+manuscript/**/*.bbl
+manuscript/**/*.bcf
+manuscript/**/*.blg
+manuscript/**/*.fdb_latexmk
+manuscript/**/*.fls
+manuscript/**/*.log
+manuscript/**/*.out
+manuscript/**/*.run.xml
+manuscript/**/*.synctex.gz
+manuscript/**/*.toc
+manuscript/**/*.nav
+manuscript/**/*.snm
+manuscript/**/*.vrb
+manuscript/**/*.idx
+manuscript/**/*.ind
+manuscript/**/*.ilg
+manuscript/**/*.lof
+manuscript/**/*.lot
+manuscript/**/*.glo
+manuscript/**/*.gls
+manuscript/**/*.glg
+
+# Compiled manuscript output -- source-of-truth is the .tex, not the PDF
+manuscript/**/*.pdf
