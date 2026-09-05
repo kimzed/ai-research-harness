@@ -2,6 +2,9 @@
 /data/
 .env*
 
+# Obsidian's own workspace config -- tool state, not vault content
+.obsidian/
+
 # LaTeX build artifacts (scoped to manuscript/ so they can't accidentally
 # catch e.g. future analysis/outputs/ log files)
 manuscript/**/*.aux

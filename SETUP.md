@@ -88,7 +88,7 @@ sudo /opt/Zotero_linux-x86_64/set_launcher_icon
 
 ## 4. Obsidian
 
-Free, local, human-facing viewer/editor for `knowledge-base/` — the vault Claude Code writes findings/concepts/article notes into (see `.claude/CLAUDE.md`'s "Obsidian research knowledge base" section). Not a capability Claude Code itself needs; it just reads/writes the same plain-markdown files directly, same relationship as VS Code + LaTeX Workshop has to `manuscript/`.
+Free, local, human-facing viewer/editor for `knowledge-base/` — the vault Claude Code writes findings/concepts/article notes into (see `CLAUDE.md`'s "Obsidian research knowledge base" section). Not a capability Claude Code itself needs; it just reads/writes the same plain-markdown files directly, same relationship as VS Code + LaTeX Workshop has to `manuscript/`.
 
 **Install (Linux):**
 ```bash
@@ -100,7 +100,7 @@ Alternative (AppImage, no install) — download from https://obsidian.md/downloa
 
 **Usage:**
 1. Launch Obsidian, choose "Open folder as vault", point it at `knowledge-base/` in this repo (not the repo root).
-2. Browse `articles/`, `concepts/`, `findings/` in the sidebar — `[[wikilinks]]` between notes render as clickable links and populate the graph view automatically, no configuration needed.
+2. The vault starts empty by design — no folder structure is imposed upfront; how notes get organized emerges from actual use (see `CLAUDE.md`'s "Obsidian research knowledge base" section). `[[wikilinks]]` between notes render as clickable links and populate the graph view automatically, no configuration needed.
 
 ---
 
