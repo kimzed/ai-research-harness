@@ -259,3 +259,148 @@ what that decision turns out to be.
   `_bmad-output/implementation-artifacts/`). Zotero-write enforcement on
   actual filing only becomes exercisable once the CAP-4/AD-3 write-mechanism
   spike lands -- until then this is flag-and-ask, not auto-fix.
+
+## Obsidian research knowledge base
+
+Paper-discussion threads (the researcher asking Claude Code about papers,
+building understanding turn by turn) produce insights that would otherwise
+live only in the ephemeral conversation. `knowledge-base/` at the repo root
+is an Obsidian vault that captures them into a durable, browsable,
+cross-linked record the researcher can grow, edit, and revisit over time.
+
+This is a fixed convention, not a per-project negotiation like the citation
+contract above -- there is no "not yet negotiated" placeholder here.
+
+Obsidian itself gets no skill wrapper: like VS Code + LaTeX Workshop
+(AD-1's precedent), it is a separate human-facing app that reads the files
+Claude Code writes directly -- not an integration point Claude Code calls
+through.
+
+### Mechanism/content separation
+
+`knowledge-base/` mirrors this template's own split between `.claude/`
+(mechanism) and everything else (content) -- the same way the harness
+planning repo separates its `_bmad/` framework from its `_bmad-output/`
+generated content.
+
+- The convention itself -- note types, trigger, approval gate, style
+  inference, cleanup rules -- lives only in this file, never inside
+  `knowledge-base/`.
+- **Never** place a template, example, or mechanism file inside
+  `knowledge-base/` itself. The vault holds only real, researcher-approved
+  note content. The one exception is bootstrap-only: the empty
+  `articles/`, `concepts/`, `findings/` folders each start with a
+  `.gitkeep` purely so git tracks the empty directory -- delete that
+  folder's `.gitkeep` the first time a real note lands in it, rather than
+  leaving it alongside real content.
+- A single `knowledge-base/README.md` is fine and not a rule violation --
+  it is a human-facing orientation note (points the researcher to the
+  three folders and to this `CLAUDE.md` section for the full convention),
+  not an agent-mechanism or template file.
+- `knowledge-base/` is git-tracked, scoped-commit like everything else in
+  this repo (see the scoped-commit convention above) -- a new or edited
+  note is staged and committed as exactly the path(s) written that turn.
+
+### Note types
+
+Three types, cross-linked via Obsidian `[[wikilinks]]`. Each note links to
+every other note it is actually related to -- never a link manufactured
+just to satisfy this rule.
+
+- `knowledge-base/articles/<citekey>.md` -- one per paper discussed.
+- `knowledge-base/concepts/<concept>.md` -- one per idea recurring across
+  papers or findings.
+- `knowledge-base/findings/<finding>.md` -- one per distinct insight
+  reached in a session.
+
+`<concept>`/`<finding>` filenames are kebab-case, derived from a short
+paraphrase of the idea (e.g. `attention-mechanism.md`,
+`sample-size-underpowered.md`) -- never two casings/spacings of the same
+name, to avoid near-duplicate files as the vault grows.
+
+An article note links back to its paper's Zotero citekey. If the paper
+isn't filed into Zotero yet, name the file from a kebab-case slug of its
+title (or DOI if no clean title exists) and link by that DOI/title
+placeholder instead -- never blocked on filing happening first, and never
+left unlinked. Once the paper is later filed into Zotero and gets a real
+citekey, rename the file to `<citekey>.md` and update every note that
+links to it -- this rename is part of ordinary filing follow-through, not
+something that needs a separate approval step.
+
+Each note carries minimal YAML frontmatter, `created: <YYYY-MM-DD>` at
+minimum -- enough to date when a finding was actually captured, backing
+the "never invent findings" rule with at least a timestamp even without a
+full source-thread reference.
+
+### Trigger: offer to save at the natural end of a thread
+
+At the natural end of a paper-discussion thread -- the researcher signals
+they're done, the conversation moves on to something else, or they
+explicitly say to save/wrap up -- Claude Code offers to save findings.
+
+- **Always** make the offer at that point. Never silently skip it, and
+  never silently auto-save without the offer having been made and
+  accepted.
+- If the researcher declines, nothing is written.
+- If the thread ends with no explicit accept or decline (the session just
+  ends), treat it the same as a decline for that thread -- nothing is
+  written. The offer can be made again if the same topic resumes later;
+  it does not carry over as a pending action.
+
+### Approval gate
+
+Before writing any new note, or new substantive content into an existing
+note, Claude Code drafts the content and shows it to the researcher for
+approval.
+
+- **Never** write a new note, or add new substantive content to an
+  existing one, without the researcher's approval first.
+- **Never** invent findings that weren't actually discussed in the
+  conversation -- a drafted finding note reflects only what the
+  conversation actually covered.
+- Whether a newly discussed idea warrants its own concept note, versus
+  staying folded into a finding note, is Claude Code's judgment call to
+  propose -- but surface that choice at this same approval step rather than
+  deciding it silently.
+
+### Inferred article style
+
+Whether an article note reads linearly (follows the paper's own
+structure/argument) or as an atomic/networked breakdown (bullets
+cross-linked to concept/finding notes, with no imposed sequence) is
+inferred from how the conversation about that paper actually unfolded.
+
+- **Never** ask the researcher to pick a style upfront.
+- If the inferred style is wrong, it gets corrected at the same approval
+  gate as any other new content -- not through a separate style-selection
+  step.
+
+### Cleanup and reorganizing
+
+Fixing broken links, deduplicating, renaming, or restructuring existing
+notes can happen freely, without per-change approval -- this is
+maintenance on the vault's structure, not new content.
+
+- **Ask First** if a cleanup/reorganize action would change or lose a
+  note's substantive content, not just its structure or links -- that stops
+  being free cleanup and needs the same approval treatment as new content.
+- "Deduplicating" means merging two notes that say the same thing under
+  different names -- free. Merging two notes whose content actually
+  differs is a content change, not deduplication: Ask First, the same as
+  any other substantive edit.
+- Deleting a note outright is a content change, not structural
+  maintenance -- Ask First, never done as part of free cleanup.
+- Renaming an `articles/<citekey>.md` file is never part of free
+  renaming -- the filename is the paper's identity link (see Note types
+  above); it changes only when the paper's own citekey changes (e.g. on
+  filing), never as a cleanup/reorganize choice.
+
+### Canonical source
+
+This convention (the three note types, the mechanism/content separation,
+the trigger/approval-gate/cleanup rules, and the inferred-article-style
+rule) is canonically defined in `spec-obsidian-knowledge-base.md` in the
+harness planning repo (the sibling planning repo's
+`_bmad-output/implementation-artifacts/`); AD-1 (Obsidian's no-skill-wrapper
+precedent) is canonically defined in `ARCHITECTURE-SPINE.md` in that same
+planning repo.
