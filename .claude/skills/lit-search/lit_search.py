@@ -5,11 +5,19 @@
 """lit_search.py -- Semantic Scholar (primary) + OpenAlex (fallback) literature
 search for the `lit-search` Claude Code skill (CAP-3, AD-8).
 
-Three search modes, one per CLI flag:
-  --topic "query text"      topic search (Semantic Scholar /paper/search)
-  --citations PAPER_ID      papers citing PAPER_ID (/paper/{id}/citations)
-  --references PAPER_ID     papers referenced by PAPER_ID (/paper/{id}/references)
-  --similar PAPER_ID        similar papers (/recommendations/v1/papers/forpaper/{id})
+Two mutually exclusive top-level modes:
+  --topic "query text"   topic search (Semantic Scholar /paper/search)
+  --paper PAPER_ID       anchor a citation-graph/similarity query to one
+                         paper id, combined with one or more of:
+                           --citations    papers citing PAPER_ID
+                           --references   papers PAPER_ID itself cites
+                           --similar      papers similar to PAPER_ID
+                         Any combination of --citations/--references/
+                         --similar is valid in a single invocation; each
+                         relation is fetched, parsed, and reported
+                         independently -- one relation's throttle/error/halt
+                         never discards another relation's already-resolved
+                         candidates in the same invocation.
 
 PAPER_ID accepts a Semantic Scholar paper id, or a prefixed external id such
 as "DOI:10.1038/nature14539" or "ARXIV:2106.15928". A bare DOI (starts with
@@ -20,9 +28,28 @@ Always prints a single parsed JSON object to stdout -- never a raw API dump
 candidate's identifier is emitted in the shared flat shape:
     {"doi": "...", "title": "...", "arxiv_id": null}
 
+`--topic` output shape (unchanged from the previous single-mode CLI):
+    {"status": "ok"|"error"|"halt", "mode": "topic", "query": ...,
+     "count": N, "candidates": [...], "notes": [...]}
+
+`--paper` output shape groups each requested relation independently, with no
+cross-relation merge, dedup, or found-via tagging -- that judgment is left to
+Claude Code from the conversation:
+    {"status": "ok"|"halt", "paper": PAPER_ID,
+     "relations": {"citations": {...}, "references": {...}, "similar": {...}}}
+Each present relation entry uses the same "status"/"count"/"candidates"/
+"notes" shape as a `--topic` result (minus "mode"/"query"). A throttle/error
+on one relation is reported as that relation's own "status": "error" without
+discarding another relation's candidates. If any relation needs the OpenAlex
+Ask-First halt, the top-level "status" is "halt" (exit 2) and every
+already-resolved relation's candidates remain present alongside it.
+
 Exit codes:
   0  ok -- see "status": "ok" in the printed JSON
   1  error (throttled after max backoff, HTTP failure, paper not found, etc.)
+     -- `--topic` mode only; `--paper` mode never aborts the whole call on a
+     relation error, it reports that relation's own "status": "error" instead
+     (see above) and still exits 0 unless a halt fired.
   2  halt -- Ask-First condition hit (OPENALEX_API_KEY unset, fallback needed).
      Claude Code must relay the "message" field to the researcher rather than
      silently proceeding or re-running.
@@ -350,16 +377,34 @@ def build_parser() -> argparse.ArgumentParser:
     mode_group = parser.add_mutually_exclusive_group(required=True)
     mode_group.add_argument("--topic", metavar="QUERY", help="Topic search.")
     mode_group.add_argument(
-        "--citations", metavar="PAPER_ID", help="Papers citing PAPER_ID."
-    )
-    mode_group.add_argument(
-        "--references", metavar="PAPER_ID", help="Papers referenced by PAPER_ID."
-    )
-    mode_group.add_argument(
-        "--similar", metavar="PAPER_ID", help="Papers similar to PAPER_ID."
+        "--paper",
+        metavar="PAPER_ID",
+        help=(
+            "Anchor paper id for a citation-graph/similarity query. Requires "
+            "at least one of --citations/--references/--similar; any "
+            "combination of those is valid in one invocation."
+        ),
     )
     parser.add_argument(
-        "--limit", type=int, default=10, help="Max candidates to return (default 10)."
+        "--citations",
+        action="store_true",
+        help="Include papers citing --paper.",
+    )
+    parser.add_argument(
+        "--references",
+        action="store_true",
+        help="Include papers --paper itself cites.",
+    )
+    parser.add_argument(
+        "--similar",
+        action="store_true",
+        help="Include papers similar to --paper.",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=10,
+        help="Max candidates per relation (or per topic search), default 10.",
     )
     parser.add_argument(
         "--no-openalex-fallback",
@@ -374,25 +419,15 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> int:
-    args = build_parser().parse_args()
-    repo_root = find_repo_root(Path.cwd())
-    load_dotenv(repo_root)
+# ---------------------------------------------------------------------------
+# --topic mode (unchanged single-list shape)
+# ---------------------------------------------------------------------------
 
+
+def run_topic_mode(args: argparse.Namespace) -> int:
     notes: list[str] = []
     try:
-        if args.topic:
-            mode, query = "topic", args.topic
-            raw_papers = s2_search_topic(args.topic, args.limit)
-        elif args.citations:
-            mode, query = "citations", args.citations
-            raw_papers = s2_citations(normalize_paper_id(args.citations), args.limit)
-        elif args.references:
-            mode, query = "references", args.references
-            raw_papers = s2_references(normalize_paper_id(args.references), args.limit)
-        else:
-            mode, query = "similar", args.similar
-            raw_papers = s2_similar(normalize_paper_id(args.similar), args.limit)
+        raw_papers = s2_search_topic(args.topic, args.limit)
     except ThrottledError as exc:
         print(
             json.dumps(
@@ -423,11 +458,11 @@ def main() -> int:
             json.dumps(
                 {
                     "status": "ok",
-                    "mode": mode,
-                    "query": query,
+                    "mode": "topic",
+                    "query": args.topic,
                     "count": 0,
                     "candidates": [],
-                    "notes": [f"No results found for {mode} query {query!r}."],
+                    "notes": [f"No results found for topic query {args.topic!r}."],
                 },
                 indent=2,
             )
@@ -456,7 +491,11 @@ def main() -> int:
         return 1
 
     if needs_openalex_key:
-        pending_titles = [c["title"] for c in candidates if c["abstract_source"] is None and c["abstract"] is None]
+        pending_titles = [
+            c["title"]
+            for c in candidates
+            if c["abstract_source"] is None and c["abstract"] is None
+        ]
         print(
             json.dumps(
                 {
@@ -471,8 +510,9 @@ def main() -> int:
                         "so they can set OPENALEX_API_KEY in .env first?"
                     ),
                     "pending_abstract_lookups": pending_titles,
-                    "mode": mode,
-                    "query": query,
+                    "mode": "topic",
+                    "query": args.topic,
+                    "count": len(candidates),
                     "candidates": candidates,
                 },
                 indent=2,
@@ -484,8 +524,8 @@ def main() -> int:
         json.dumps(
             {
                 "status": "ok",
-                "mode": mode,
-                "query": query,
+                "mode": "topic",
+                "query": args.topic,
                 "count": len(candidates),
                 "candidates": candidates,
                 "notes": notes,
@@ -494,6 +534,163 @@ def main() -> int:
         )
     )
     return 0
+
+
+# ---------------------------------------------------------------------------
+# --paper mode -- independently combinable relation flags
+# ---------------------------------------------------------------------------
+
+RELATION_FETCHERS = {
+    "citations": s2_citations,
+    "references": s2_references,
+    "similar": s2_similar,
+}
+
+
+def run_relation(
+    relation: str, paper_id: str, limit: int, skip_openalex_fallback: bool
+) -> dict[str, Any]:
+    """Fetch + parse exactly one relation in isolation.
+
+    Never raises -- a throttle, HTTP error, or paper-not-found becomes this
+    relation's own `"status": "error"` entry instead of propagating, so it
+    can't discard another relation's already-resolved candidates in the same
+    invocation.
+    """
+    notes: list[str] = []
+    fetch = RELATION_FETCHERS[relation]
+
+    try:
+        raw_papers = fetch(paper_id, limit)
+    except ThrottledError as exc:
+        return {"status": "error", "reason": "throttled", "message": str(exc)}
+    except PaperNotFoundError as exc:
+        return {"status": "error", "reason": "paper_not_found", "message": str(exc)}
+    except requests.RequestException as exc:
+        return {"status": "error", "reason": "http_error", "message": str(exc)}
+    except Exception as exc:
+        return {"status": "error", "reason": "unexpected", "message": str(exc)}
+
+    if not raw_papers:
+        return {
+            "status": "ok",
+            "count": 0,
+            "candidates": [],
+            "notes": [f"No results found for {relation} of {paper_id!r}."],
+        }
+
+    try:
+        candidates, needs_openalex_key = parse_candidates(
+            raw_papers, skip_openalex_fallback, notes
+        )
+    except ThrottledError as exc:
+        return {"status": "error", "reason": "throttled", "message": str(exc)}
+    except requests.RequestException as exc:
+        return {"status": "error", "reason": "http_error", "message": str(exc)}
+    except Exception as exc:
+        return {"status": "error", "reason": "unexpected", "message": str(exc)}
+
+    if needs_openalex_key:
+        pending_titles = [
+            c["title"]
+            for c in candidates
+            if c["abstract_source"] is None and c["abstract"] is None
+        ]
+        return {
+            "status": "halt",
+            "reason": "openalex_key_missing",
+            "message": (
+                "Semantic Scholar returned no abstract for one or more "
+                f"candidates in the {relation!r} relation and "
+                "OPENALEX_API_KEY is unset in .env, so the OpenAlex "
+                "cross-check cannot run for it. Ask the researcher: proceed "
+                "Semantic-Scholar-only for this session (then re-run with "
+                "--no-openalex-fallback), or pause so they can set "
+                "OPENALEX_API_KEY in .env first?"
+            ),
+            "pending_abstract_lookups": pending_titles,
+            "count": len(candidates),
+            "candidates": candidates,
+            "notes": notes,
+        }
+
+    return {
+        "status": "ok",
+        "count": len(candidates),
+        "candidates": candidates,
+        "notes": notes,
+    }
+
+
+def run_paper_mode(args: argparse.Namespace) -> int:
+    paper_id = normalize_paper_id(args.paper)
+    requested = [
+        name
+        for name, flag in (
+            ("citations", args.citations),
+            ("references", args.references),
+            ("similar", args.similar),
+        )
+        if flag
+    ]
+
+    relations: dict[str, Any] = {
+        name: run_relation(name, paper_id, args.limit, args.no_openalex_fallback)
+        for name in requested
+    }
+
+    halted = [name for name, result in relations.items() if result.get("status") == "halt"]
+    errored = [name for name, result in relations.items() if result.get("status") == "error"]
+
+    payload: dict[str, Any] = {
+        "status": "halt" if halted else "ok",
+        "paper": paper_id,
+        "relations": relations,
+    }
+    if halted:
+        also_errored = (
+            f" Separately, the following relation(s) also failed: "
+            f"{', '.join(errored)} -- see each one's own \"message\"."
+            if errored
+            else ""
+        )
+        payload["message"] = (
+            "OpenAlex is needed for at least one candidate in the following "
+            f"relation(s): {', '.join(halted)}, but OPENALEX_API_KEY is unset "
+            "in .env. See each halted relation's own \"message\" for detail. "
+            "Ask the researcher: proceed Semantic-Scholar-only for this "
+            "session (then re-run this same --paper call with "
+            "--no-openalex-fallback), or pause so they can set "
+            "OPENALEX_API_KEY in .env first. Already-resolved candidates in "
+            "every requested relation are included above and are not "
+            "discarded while waiting on the answer." + also_errored
+        )
+
+    print(json.dumps(payload, indent=2))
+    return 2 if halted else 0
+
+
+def main() -> int:
+    parser = build_parser()
+    args = parser.parse_args()
+
+    if args.paper is not None and not (args.citations or args.references or args.similar):
+        parser.error(
+            "--paper requires at least one of --citations/--references/--similar."
+        )
+    if args.topic is not None and (args.citations or args.references or args.similar):
+        parser.error(
+            "--topic is its own mode and cannot be combined with "
+            "--citations/--references/--similar -- use --paper for those "
+            "(topic search has no anchor paper)."
+        )
+
+    repo_root = find_repo_root(Path.cwd())
+    load_dotenv(repo_root)
+
+    if args.topic is not None:
+        return run_topic_mode(args)
+    return run_paper_mode(args)
 
 
 if __name__ == "__main__":
