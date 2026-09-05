@@ -95,3 +95,167 @@ Zotero (Zotero -> BBT -> `references.bib`). Claude Code only ever reads it.
 - CAP-1, CAP-2, and AD-2/AD-4/AD-6 are canonically defined in SPEC.md /
   ARCHITECTURE-SPINE.md in the harness planning repo (the sibling planning
   repo's `_bmad-output/specs/spec-ai-research-harness/`).
+
+## Citation-format & field contract (Zotero field completeness + citation style)
+
+**This section is not a fixed template default -- it is negotiated live
+with whoever is using this instantiated project, once, before any real
+citation is filed or emitted.** "Real" means any reference beyond the
+existing `vanherzeleMonitoringToolProvision2003a` entry left over from story
+3's mechanism test -- the first time the researcher asks Claude Code to
+file or cite a paper that isn't that one, negotiate first. Claude Code must
+run that negotiation -- proposing the starting checklist and style question
+below, then refining them with the researcher -- and record the actual
+decision in the "Negotiated decision" placeholders, replacing them. Never
+assume the proposal below is already the decision; never skip the
+negotiation because a plausible-looking answer is easy to guess.
+
+Once negotiated, Claude Code checks every Zotero item it touches -- filed
+(once the CAP-4 Zotero-filing story lands) or read (CAP-1/CAP-5) -- against
+the decided checklist. This is a standing check, not a one-time setup step:
+it runs again every time an item is touched, since the researcher can edit
+Zotero directly between calls.
+
+### Citation style
+
+**Negotiated decision:** _not yet negotiated for this project instance._
+
+When negotiating, ask the researcher which biblatex style fits their target
+venue/thesis style guide (e.g. `numeric` -- biblatex's own implicit default
+if `style=` is left unset, `authoryear`, `apa`, or a journal-specific
+`.bbx`). Do not default silently to `numeric` by omission -- an explicit,
+recorded choice is the point. Once decided, set it in
+`manuscript/main.tex`'s `\usepackage[backend=biber,style=<decided>]{biblatex}`
+and record the choice (and rationale) here, replacing this placeholder.
+
+### Field completeness checklist per reference type
+
+**Negotiated decision:** _the tables below are Claude Code's starting
+proposal for this negotiation, not yet confirmed with the researcher._
+Refine required/recommended/optional splits together, add or drop reference
+types as needed, then remove this note once confirmed.
+
+Field names below are Better BibTeX's biblatex-flavored export names (e.g.
+`journaltitle`/`date`, not classic BibTeX's `journal`/`year`), matching the
+one live entry in `references.bib` at proposal time. Only `@article`,
+`@inproceedings`, `@book`, and `@thesis` are covered below -- if the
+researcher's library has (or is expected to have) other Zotero item types
+(e.g. web pages, software, datasets, preprints, reports, book chapters),
+negotiate a checklist row for those too rather than leaving them unchecked;
+never silently pass or silently block an item of a type this checklist
+doesn't yet cover.
+
+**`@article`**
+
+| Field | Requirement |
+| --- | --- |
+| `author` | Required |
+| `title` | Required |
+| `journaltitle` | Required |
+| `date` | Required |
+| `volume` | Required |
+| `number` | Recommended (when the journal issues one) |
+| `pages` | Required (or `eid`/article-number when the journal is online-only and issues no page range) |
+| `doi` | Required whenever one exists |
+| `url` + `urldate` | Required when no `doi` exists; `urldate` mandatory whenever `url` is present |
+| `issn` | Recommended |
+| `langid` | Recommended for non-English items |
+
+**`@inproceedings`**
+
+| Field | Requirement |
+| --- | --- |
+| `author` | Required |
+| `title` | Required |
+| `booktitle` | Required |
+| `date` | Required |
+| `pages` | Required (or `eid`/article-number when the proceedings issue no page range) |
+| `publisher` | Recommended |
+| `location` | Recommended (host city/venue) |
+| `doi` | Required whenever one exists |
+| `url` + `urldate` | Required when no `doi` exists; `urldate` mandatory whenever `url` is present |
+| `eventtitle` | Optional |
+| `langid` | Recommended for non-English items |
+
+**`@book`**
+
+| Field | Requirement |
+| --- | --- |
+| `author` or `editor` | Required (at least one) |
+| `title` | Required |
+| `date` | Required |
+| `publisher` | Required |
+| `location` | Recommended |
+| `isbn` | Recommended |
+| `doi` | Required whenever one exists |
+| `url` + `urldate` | Required when no `doi` exists; `urldate` mandatory whenever `url` is present |
+| `langid` | Recommended for non-English items |
+
+**`@thesis`** (biblatex's unified thesis type; degree level goes in `type`,
+e.g. `type = {phdthesis}` / `type = {mathesis}` -- never split into legacy
+`@phdthesis`/`@mastersthesis`)
+
+| Field | Requirement |
+| --- | --- |
+| `author` | Required |
+| `title` | Required |
+| `type` | Required |
+| `institution` | Required |
+| `date` | Required |
+| `location` | Optional |
+| `url` + `urldate` | Required when the thesis is openly available online; `urldate` mandatory whenever `url` is present |
+| `langid` | Recommended for non-English items |
+
+### Malformed-field format
+
+**Negotiated decision:** _proposal below, confirm the date format fits the
+researcher's field/venue before treating it as decided._
+
+`date` (and `urldate`) as a partial-or-full ISO 8601 date -- `YYYY`,
+`YYYY-MM`, or `YYYY-MM-DD` -- matching the existing entry's
+`date = {2003-04}`. A natural-language date (`"April 2003"`, `"Spring
+2003"`, `"n.d."`) is malformed under this proposal: flag the specific field
+and the expected format rather than silently reformatting or guessing.
+
+### Detection & remediation behavior
+
+This part is fixed mechanism, not a per-project preference -- it applies
+once the sections above have an actual negotiated decision, regardless of
+what that decision turns out to be.
+
+- **Always:** run the negotiated checklist above against every Zotero item
+  Claude Code touches (filed or read) -- never a one-time check. This
+  applies to **Required** fields only; a missing **Recommended** or
+  **Optional** field is noted to the researcher (once) but never triggers
+  the external-lookup chain below.
+- **On a missing or malformed Required field:** before ever asking the
+  researcher to supply it manually, attempt an external lookup for that
+  specific value, in this order: (1) DOI resolution, if a `doi` is present;
+  (2) Semantic Scholar, by DOI or title; (3) OpenAlex, by DOI or title, as
+  cross-check/fallback -- mirroring CAP-3's Semantic-Scholar-primary,
+  OpenAlex-fallback pattern. For `@book`/`@thesis` items (rarely indexed by
+  either), skip straight to asking the researcher directly.
+- **Ask First:** any value recovered via external lookup is shown to the
+  researcher for confirmation before use anywhere. Claude Code cannot write
+  it into Zotero directly yet (AD-3's local write mechanism is unresolved,
+  pending a later spike) -- confirm it, then hand it to the researcher to
+  enter into Zotero themselves. If the researcher rejects the recovered
+  value, treat the field as unresolved and fall through to the next rule --
+  never re-propose the same rejected value or invent an alternative.
+- **If external lookup also can't resolve the value (or the researcher
+  rejects what was recovered):** HALT and ask the researcher directly --
+  never proceed silently and never invent a plausible-looking value. If the
+  researcher confirms the value is genuinely unobtainable (e.g. a
+  pre-DOI-era print-only source with no `doi` or `url`), record that field
+  as an accepted gap for that specific item so the standing check doesn't
+  re-flag it on every future touch -- an accepted gap is per-item, not a
+  change to the checklist itself.
+- **Never** write into `manuscript/references.bib` to "fix" a missing or
+  malformed field -- it is a generated export (per the Bibliography
+  convention above); any correction goes into Zotero itself.
+- This checklist and detection behavior are canonically defined in
+  `spec-zotero-citation-field-contract.md` in the harness planning repo (the
+  sibling planning repo's
+  `_bmad-output/implementation-artifacts/`). Zotero-write enforcement on
+  actual filing only becomes exercisable once the CAP-4/AD-3 write-mechanism
+  spike lands -- until then this is flag-and-ask, not auto-fix.
