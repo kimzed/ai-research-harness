@@ -1,6 +1,6 @@
 # Setup
 
-Machine setup for working in this repo — four pieces: **Claude Code** (the agent doing the work), **VS Code + LaTeX Workshop** (human-facing editor/previewer), **TeX Live** (compiles `manuscript/*.tex`), and **Zotero + Better BibTeX** (reference library + the `manuscript/references.bib` feed). A fifth piece, the paper-metadata API (Semantic Scholar/OpenAlex), needs no install — see the `ai-research-harness-specs` repo's `research-tooling-overview.md` §3.
+Machine setup for working in this repo — five pieces: **Claude Code** (the agent doing the work), **VS Code + LaTeX Workshop** (human-facing editor/previewer), **TeX Live** (compiles `manuscript/*.tex`), **Zotero + Better BibTeX** (reference library + the `manuscript/references.bib` feed), and **Obsidian** (human-facing viewer/editor for the `knowledge-base/` vault). A sixth piece, the paper-metadata API (Semantic Scholar/OpenAlex), needs no install — see the `ai-research-harness-specs` repo's `research-tooling-overview.md` §3.
 
 Per the specs repo's `SPEC.md` Assumptions, **v1 targets Cedric's Linux machine only** — all steps below are Linux (Ubuntu/Debian) commands. The pilot's Windows setup is an explicit non-goal for now, revisited as a follow-on once the Linux path is proven.
 
@@ -83,6 +83,24 @@ sudo /opt/Zotero_linux-x86_64/set_launcher_icon
 3. Right-click your library/collection → *Export* → translator **Better BibLaTeX** (not plain "Better BibTeX" — its "Keep updated" checkbox is missing/bugged in current BBT releases, and `manuscript/main.tex` uses `biblatex`, which expects BibLaTeX-flavored fields like `date`/`journaltitle` anyway), tick **Keep updated** → point the export at `manuscript/references.bib` in this repo.
 
 **Installed and configured on this machine (2026-09-02):** confirmed working as part of story 3 (Bibliography read + citation emission) — `manuscript/references.bib` now carries a live Better-BibTeX "Keep updated" export (one entry so far, key `vanherzeleMonitoringToolProvision2003a`), and a fresh read of it round-tripped successfully through a real `\cite{key}` and a clean `latexmk`/`biber` compile.
+
+---
+
+## 4. Obsidian
+
+Free, local, human-facing viewer/editor for `knowledge-base/` — the vault Claude Code writes findings/concepts/article notes into (see `.claude/CLAUDE.md`'s "Obsidian research knowledge base" section). Not a capability Claude Code itself needs; it just reads/writes the same plain-markdown files directly, same relationship as VS Code + LaTeX Workshop has to `manuscript/`.
+
+**Install (Linux):**
+```bash
+sudo snap install obsidian --classic
+```
+Alternative (AppImage, no install) — download from https://obsidian.md/download and run directly if you'd rather avoid snap.
+
+**Installed on this machine (2026-09-05):** Obsidian **1.13.7** via snap (`obsidian` → `/snap/bin/obsidian`).
+
+**Usage:**
+1. Launch Obsidian, choose "Open folder as vault", point it at `knowledge-base/` in this repo (not the repo root).
+2. Browse `articles/`, `concepts/`, `findings/` in the sidebar — `[[wikilinks]]` between notes render as clickable links and populate the graph view automatically, no configuration needed.
 
 ---
 
