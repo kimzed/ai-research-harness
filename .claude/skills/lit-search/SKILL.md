@@ -164,48 +164,14 @@ on the final JSON on stdout.
   groups, and pick next seeds yourself. That's intentionally your job, not
   the script's.
 
-## Subfield exploration
+## Multi-hop subfield exploration
 
-Use a combined `--paper` call (one or more of `--citations`/`--references`/
-`--similar` together) to explore a seed paper's citation neighborhood and
-help the researcher build a coherent subfield literature corpus. This
-supersedes making three separate single-relation calls for the same seed.
-
-**Workflow, per hop:**
-
-1. **Pick a seed.** Start from a paper the researcher named, or a strong
-   candidate surfaced earlier in the conversation.
-2. **One combined call per hop.** Run `--paper SEED --citations --references
-   --similar` (or whichever subset makes sense -- e.g. skip `--similar` if
-   the researcher only wants graph-connected papers) in a single invocation
-   rather than three separate ones.
-3. **Judge relevance yourself.** Read each relation's `candidates` and
-   decide, from title/abstract, which plausibly belong to the subfield the
-   researcher is building. The script does no relevance filtering -- that's
-   your job.
-4. **Dedup across relations and hops yourself.** The same paper can appear
-   in `citations`, `references`, and `similar`, or reappear from a later
-   seed's expansion. The script never merges or tags these -- track what
-   you've already surfaced across the conversation and don't re-present the
-   same paper as if it were new.
-5. **Pick the next seed(s) yourself.** From the relevant candidates, choose
-   which paper(s) to expand from next, and say why, before making the next
-   combined call.
-6. **No fixed corpus-size target.** Keep expanding conversationally with the
-   researcher -- driven by their sense of the subfield's boundary, not by
-   hitting some candidate count. Don't stop at an arbitrary number and call
-   it done, and don't keep expanding past the point the researcher is
-   satisfied just to reach a round number.
-7. **Push back when it doesn't converge.** If citation/reference/similar
-   expansion starts pulling in papers that don't share a coherent subject
-   with the seed (e.g. a broadly-cited method paper drags in unrelated
-   application domains), say so explicitly: name what diverged and why, and
-   propose one or more alternative directions (a narrower seed, a different
-   relation to lean on, or a specific sub-cluster within the results) rather
-   than presenting an incoherent mixed-topic list as if it were a subfield
-   corpus. Never paper over a divergent result with a false "coherent
-   subfield" narrative.
-8. **Stay read-only.** This workflow never files, dedup-checks against
-   Zotero, or writes anything -- it only surfaces candidates in conversation
-   for the researcher to react to. Filing is a separate step the researcher
-   drives explicitly, through a different capability.
+Building a full subfield reading list from one or more seed papers -- hopping
+across *multiple* seeds until the citation graph converges, not just one
+combined call against the original seed -- is a separate skill:
+**`subfield-lit-mapping`**. It owns the snowball/convergence logic, relevance
+judgment, and dedup-across-hops guidance; this skill only documents how to
+invoke `lit_search.py` for a single `--paper`/`--topic` call. Use a combined
+`--paper SEED --citations --references --similar` call (per the Invocation
+section above) as the primitive that skill drives repeatedly -- don't
+duplicate its workflow here.

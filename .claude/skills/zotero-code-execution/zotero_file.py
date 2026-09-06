@@ -14,7 +14,7 @@ is the only mechanism that can recover a Better-BibTeX citation key at
 all. Both endpoints live on the same local Zotero HTTP server
 (127.0.0.1:23119) -- nothing here ever leaves the machine.
 
-Four modes, mutually exclusive:
+Five modes, mutually exclusive:
     --check-target                       Show the collection Zotero would
                                           file into right now (whatever's
                                           selected in the desktop UI).
@@ -31,6 +31,14 @@ Four modes, mutually exclusive:
                                           live (citekey/item key/attachments/
                                           fields) -- AD-4's "never cache
                                           across invocations" made concrete.
+    --list-collection COLLECTION_REF      Browse -- list every paper already
+                                          filed in a collection (by "C<id>"
+                                          from --check-target's "targets", or
+                                          by name), recursing into sub-
+                                          collections by default. Read-only;
+                                          see "Browsing" below for how this
+                                          differs mechanically from the other
+                                          modes.
     --file IDENTIFIER_JSON --item ITEM_JSON --researcher-confirmed
                                           Dup-check, then file a new item,
                                           then resolve + confirm citekey in
@@ -46,6 +54,26 @@ Four modes, mutually exclusive:
                                           be consistent with ITEM_JSON's
                                           DOI/title -- a mismatch is
                                           rejected rather than filed.
+
+Browsing (--list-collection): the Connector and Better BibTeX endpoints
+above have no "list everything in collection X" call -- BBT's item.search
+does accept a "collection" condition in principle, but every value shape
+this Zotero/BBT version accepts for it either returns nothing or throws an
+internal error (tried live: collection key, collectionID as string, as
+int -- verified not worth building on). So --list-collection instead opens
+the local zotero.sqlite file directly, read-only. This is the ONE mode in
+this script that isn't Connector/BBT-HTTP-based; it never writes, and (like
+the other modes) nothing it reads ever leaves the machine. Zotero desktop
+holds a lock on the file for its entire run, not just during writes -- a
+plain read-only SQLite connection gets refused the whole time, confirmed
+live -- so this uses SQLite's `immutable=1` open mode, which bypasses
+locking rather than negotiating it. That's a deliberate, accepted trade-off
+for a browse-only convenience query: a single fast SELECT can at worst
+return a momentarily-stale snapshot if it races an in-progress write, never
+corruption, and this mode never feeds a write decision by itself -- filing
+still always re-checks live via --check-duplicate/--file. Set
+ZOTERO_SQLITE_PATH if the researcher's Zotero data directory isn't the
+default `~/Zotero/zotero.sqlite`.
 
 Optional for --file: `--collection-id C83` / `--collection-name "..."` to
 move the newly filed item into a specific collection (via `/connector/
@@ -74,6 +102,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
+import sqlite3
 import sys
 import time
 import uuid
@@ -91,9 +122,25 @@ REQUEST_TIMEOUT_SECONDS = 15
 RESOLVE_RETRIES = 5
 RESOLVE_RETRY_DELAY_SECONDS = 0.8
 
+# --list-collection reads zotero.sqlite directly (see module docstring's
+# "Browsing" section for why). A plain read-only connection is retried a
+# few times first (it can occasionally succeed between Zotero's own writes)
+# before falling back to the immutable=1 open mode that bypasses locking
+# entirely.
+ZOTERO_SQLITE_ENV_VAR = "ZOTERO_SQLITE_PATH"
+DEFAULT_ZOTERO_SQLITE_PATH = os.path.expanduser("~/Zotero/zotero.sqlite")
+SQLITE_LOCKED_RETRIES = 3
+SQLITE_LOCKED_RETRY_DELAY_SECONDS = 0.3
+NON_PAPER_ITEM_TYPES = {"attachment", "note", "annotation"}
+
 
 class ZoteroNotRunningError(RuntimeError):
     """Zotero desktop's local HTTP server (127.0.0.1:23119) is unreachable."""
+
+
+class ZoteroDatabaseError(RuntimeError):
+    """The local zotero.sqlite file (--list-collection only) couldn't be
+    opened or read."""
 
 
 class ZoteroTimeoutError(RuntimeError):
@@ -502,6 +549,228 @@ def run_resolve(identifier: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# --list-collection -- the one mode that reads zotero.sqlite directly
+# instead of going through Connector/BBT (see module docstring's "Browsing").
+# ---------------------------------------------------------------------------
+
+
+def _open_zotero_db() -> sqlite3.Connection:
+    path = os.environ.get(ZOTERO_SQLITE_ENV_VAR) or DEFAULT_ZOTERO_SQLITE_PATH
+    if not os.path.isfile(path):
+        raise ZoteroDatabaseError(
+            f"Zotero's local database wasn't found at {path!r}. Set "
+            f"{ZOTERO_SQLITE_ENV_VAR} if the researcher's Zotero data "
+            "directory isn't the default, or ask them where it lives."
+        )
+    for attempt in range(SQLITE_LOCKED_RETRIES):
+        try:
+            # sqlite3.connect() alone doesn't touch the file lock -- it's
+            # acquired lazily on the first statement, so the actual lock
+            # check has to be a real query, not just a successful connect().
+            con = sqlite3.connect(f"file:{path}?mode=ro", uri=True, timeout=2)
+            # "SELECT 1" is a constant expression -- it never touches an
+            # actual table page, so it doesn't trigger the lock check
+            # either. Read a real row to force it.
+            con.execute("SELECT collectionID FROM collections LIMIT 1").fetchone()
+            return con
+        except sqlite3.OperationalError:
+            if attempt < SQLITE_LOCKED_RETRIES - 1:
+                time.sleep(SQLITE_LOCKED_RETRY_DELAY_SECONDS)
+    # Confirmed live: Zotero desktop holds the file locked for its entire
+    # run, not just mid-write, so plain read-only retries above are
+    # expected to exhaust here whenever Zotero is open. immutable=1
+    # bypasses locking rather than negotiating it -- see the module
+    # docstring for why that's an accepted trade-off for a browse-only
+    # query.
+    try:
+        return sqlite3.connect(f"file:{path}?immutable=1", uri=True)
+    except sqlite3.OperationalError as exc:
+        raise ZoteroDatabaseError(
+            f"Could not open Zotero's local database at {path!r} even in "
+            f"immutable fallback mode: {exc}"
+        ) from exc
+
+
+def _library_name(cur: sqlite3.Cursor, library_id: int) -> str:
+    row = cur.execute("SELECT type FROM libraries WHERE libraryID = ?", (library_id,)).fetchone()
+    if row and row[0] == "user":
+        return "My Library"
+    group = cur.execute("SELECT name FROM groups WHERE libraryID = ?", (library_id,)).fetchone()
+    return group[0] if group else f"library {library_id}"
+
+
+def _resolve_collection_ref(
+    cur: sqlite3.Cursor, ref: str
+) -> tuple[tuple[int, str, int] | None, dict[str, Any] | None]:
+    """Returns ((collectionID, name, libraryID), None) on a unique match, or
+    (None, error_or_halt_payload) otherwise -- same shape convention as
+    resolve_collection_target below."""
+    stripped = ref.strip()
+    numeric = stripped[1:] if stripped[:1].upper() == "C" and stripped[1:].isdigit() else (
+        stripped if stripped.isdigit() else None
+    )
+    if numeric is not None:
+        row = cur.execute(
+            "SELECT collectionID, collectionName, libraryID FROM collections WHERE collectionID = ?",
+            (int(numeric),),
+        ).fetchone()
+        if not row:
+            return None, {
+                "status": "error",
+                "reason": "invalid_input",
+                "message": (
+                    f"No collection with id {ref!r} exists. Use "
+                    '--check-target\'s "targets" list to find a valid one, '
+                    "or pass a name instead."
+                ),
+            }
+        return row, None
+
+    rows = cur.execute(
+        "SELECT collectionID, collectionName, libraryID FROM collections WHERE lower(collectionName) = lower(?)",
+        (stripped,),
+    ).fetchall()
+    if not rows:
+        return None, {
+            "status": "error",
+            "reason": "invalid_input",
+            "message": f"No collection named {ref!r} was found in any library.",
+        }
+    if len(rows) > 1:
+        return None, {
+            "status": "halt",
+            "reason": "ambiguous_collection_name",
+            "message": (
+                f"{len(rows)} collections are named {ref!r} across "
+                "different libraries/parents. Ask the researcher which one "
+                'they mean -- pass the specific "C<id>" from "candidates" '
+                "instead of the name."
+            ),
+            "candidates": [
+                {"id": f"C{cid}", "name": name, "library": _library_name(cur, lib_id)}
+                for cid, name, lib_id in rows
+            ],
+        }
+    return rows[0], None
+
+
+def _descendant_collection_ids(cur: sqlite3.Cursor, root_id: int) -> list[int]:
+    ids = [root_id]
+    frontier = [root_id]
+    while frontier:
+        placeholders = ",".join("?" * len(frontier))
+        rows = cur.execute(
+            f"SELECT collectionID FROM collections WHERE parentCollectionID IN ({placeholders})",
+            frontier,
+        ).fetchall()
+        frontier = [r[0] for r in rows if r[0] not in ids]
+        ids.extend(frontier)
+    return ids
+
+
+def _item_field(cur: sqlite3.Cursor, item_id: int, field_name: str) -> str | None:
+    row = cur.execute(
+        """
+        SELECT idv.value FROM itemData id
+        JOIN itemDataValues idv ON id.valueID = idv.valueID
+        JOIN fields f ON id.fieldID = f.fieldID
+        WHERE id.itemID = ? AND f.fieldName = ?
+        LIMIT 1
+        """,
+        (item_id, field_name),
+    ).fetchone()
+    return row[0] if row else None
+
+
+def run_list_collection(ref: str, recursive: bool) -> dict[str, Any]:
+    try:
+        con = _open_zotero_db()
+    except ZoteroDatabaseError as exc:
+        return {"status": "error", "reason": "zotero_database_unavailable", "message": str(exc)}
+
+    try:
+        cur = con.cursor()
+        resolved, problem = _resolve_collection_ref(cur, ref)
+        if problem is not None:
+            return problem
+        collection_id, collection_name, library_id = resolved
+
+        target_ids = _descendant_collection_ids(cur, collection_id) if recursive else [collection_id]
+        sub_collections = []
+        if len(target_ids) > 1:
+            placeholders = ",".join("?" * (len(target_ids) - 1))
+            other_ids = [i for i in target_ids if i != collection_id]
+            sub_collections = [
+                {"id": f"C{cid}", "name": name}
+                for cid, name in cur.execute(
+                    f"SELECT collectionID, collectionName FROM collections WHERE collectionID IN ({placeholders})",
+                    other_ids,
+                ).fetchall()
+            ]
+
+        placeholders = ",".join("?" * len(target_ids))
+        rows = cur.execute(
+            f"""
+            SELECT DISTINCT i.itemID, i.key, it.typeName
+            FROM collectionItems ci
+            JOIN items i ON ci.itemID = i.itemID
+            JOIN itemTypes it ON i.itemTypeID = it.itemTypeID
+            WHERE ci.collectionID IN ({placeholders})
+              AND i.itemID NOT IN (SELECT itemID FROM deletedItems)
+            ORDER BY i.itemID
+            """,
+            target_ids,
+        ).fetchall()
+
+        items = []
+        excluded_non_paper = 0
+        for item_id, item_key, type_name in rows:
+            if type_name in NON_PAPER_ITEM_TYPES:
+                excluded_non_paper += 1
+                continue
+            title = _item_field(cur, item_id, "title")
+            doi = _item_field(cur, item_id, "DOI")
+            date_value = _item_field(cur, item_id, "date")
+            year_match = re.search(r"\d{4}", date_value) if date_value else None
+            items.append(
+                {
+                    "item_key": item_key,
+                    "title": title,
+                    "item_type": type_name,
+                    "year": int(year_match.group()) if year_match else None,
+                    "identifier": {"doi": doi, "title": title, "arxiv_id": None},
+                }
+            )
+        items.sort(key=lambda entry: (entry["title"] or "").lower())
+
+        return {
+            "status": "ok",
+            "library": {"id": library_id, "name": _library_name(cur, library_id)},
+            "collection": {"id": f"C{collection_id}", "name": collection_name},
+            "recursive": recursive,
+            "sub_collections_included": sub_collections,
+            "count": len(items),
+            "items": items,
+            "attachments_and_notes_excluded": excluded_non_paper,
+            "message": (
+                f"{len(items)} paper(s) found in {collection_name!r}"
+                + (
+                    f" (including its {len(sub_collections)} sub-collection(s): "
+                    + ", ".join(s["name"] for s in sub_collections) + ")"
+                    if sub_collections
+                    else ""
+                )
+                + ". Each item's \"identifier\" is the same flat shape "
+                "lit-search/--check-duplicate/--resolve use -- pass it "
+                "straight through if you need the citekey or full CSL "
+                "fields for any of these."
+            ),
+        }
+    finally:
+        con.close()
+
+
+# ---------------------------------------------------------------------------
 # --file
 # ---------------------------------------------------------------------------
 
@@ -734,8 +1003,10 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--check-target", action="store_true", help="Show the collection filing would land in right now.")
     mode.add_argument("--check-duplicate", metavar="IDENTIFIER_JSON", help='Live-identifier search only, e.g. \'{"doi":"10.x/y","title":"...","arxiv_id":null}\'.')
     mode.add_argument("--resolve", metavar="IDENTIFIER_JSON", help="Re-resolve an already-filed item live by identifier.")
+    mode.add_argument("--list-collection", metavar="COLLECTION_REF", help='List every paper already filed in a collection -- "C69" (from --check-target\'s "targets") or a name. Recurses into sub-collections by default; pass --no-recursive to list only direct members.')
     mode.add_argument("--file", metavar="IDENTIFIER_JSON", help="File a new item after dup-check, then resolve + confirm citekey.")
 
+    parser.add_argument("--no-recursive", action="store_true", help="With --list-collection, list only direct members -- don't descend into sub-collections.")
     parser.add_argument("--item", metavar="ITEM_JSON", help='Zotero item payload for --file, e.g. \'{"itemType":"journalArticle","title":"...","creators":[...],"DOI":"...","date":"..."}\'.')
     parser.add_argument("--researcher-confirmed", action="store_true", help="Required for --file. Only pass this after the researcher has explicitly confirmed this exact candidate in conversation -- never after just showing search results.")
     parser.add_argument("--collection-id", metavar="TREE_VIEW_ID", help='Move the filed item into this collection (e.g. "C83") instead of whatever is currently selected in Zotero. Validated against the live target list.')
@@ -772,6 +1043,8 @@ def main() -> int:
             parser.error("Pass at most one of --collection-id / --collection-name.")
     elif file_only_flags_set:
         parser.error("--item/--researcher-confirmed/--collection-id/--collection-name/--override-duplicate-match only apply to --file.")
+    if args.no_recursive and args.list_collection is None:
+        parser.error("--no-recursive only applies to --list-collection.")
 
     try:
         if args.check_target:
@@ -782,6 +1055,8 @@ def main() -> int:
         elif args.resolve is not None:
             identifier = validate_identifier(parse_json_arg(args.resolve, "--resolve"), "--resolve")
             result = run_resolve(identifier)
+        elif args.list_collection is not None:
+            result = run_list_collection(args.list_collection, recursive=not args.no_recursive)
         else:
             identifier = validate_identifier(parse_json_arg(args.file, "--file"), "--file")
             item = parse_json_arg(args.item, "--item")

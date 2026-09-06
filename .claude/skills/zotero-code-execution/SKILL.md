@@ -31,7 +31,7 @@ communicate with Zotero" enabled (Settings -> Advanced).
 
 ## Invocation
 
-Four mutually exclusive modes:
+Five mutually exclusive modes:
 
 ```bash
 # 1. What would filing hit right now? (AD-2's default target)
@@ -45,12 +45,33 @@ uv run .claude/skills/zotero-code-execution/zotero_file.py \
 uv run .claude/skills/zotero-code-execution/zotero_file.py \
   --resolve '{"doi":"10.xxxx/yyyy","title":"...","arxiv_id":null}'
 
+# 5a. Browse everything already filed in a collection, by id from
+#     --check-target's "targets" (recurses into sub-collections by default).
+uv run .claude/skills/zotero-code-execution/zotero_file.py --list-collection "C69"
+
+# 5b. Or by name -- halts with candidates if the name is ambiguous across
+#     libraries/parents (this library genuinely has that).
+uv run .claude/skills/zotero-code-execution/zotero_file.py --list-collection "suitability_mapping"
+
+# 5c. Direct members only, no sub-collections.
+uv run .claude/skills/zotero-code-execution/zotero_file.py --list-collection "C44" --no-recursive
+
 # 4. File a researcher-confirmed candidate: dup-check, write, resolve, confirm.
 uv run .claude/skills/zotero-code-execution/zotero_file.py \
   --file '{"doi":"10.xxxx/yyyy","title":"...","arxiv_id":null}' \
   --item '{"itemType":"journalArticle","title":"...","creators":[{"firstName":"A","lastName":"B","creatorType":"author"}],"date":"2024","DOI":"10.xxxx/yyyy","url":"..."}' \
   --researcher-confirmed
 ```
+
+**`--list-collection COLLECTION_REF`** -- use this whenever you need to know
+what's *already* in a collection (e.g. before proposing where a subfield
+reading list should be filed, or to sanity-check whether a folder someone
+mentions actually has anything in it). `COLLECTION_REF` is either a
+Connector-style id (`"C69"`, from `--check-target`'s `"targets"`) or a
+collection name. Mechanically different from every other mode: it reads
+`zotero.sqlite` directly instead of going through Connector/BBT -- see the
+script's module docstring if you need the why. Still fully read-only and
+fully local.
 
 - The `--file`/`--check-duplicate`/`--resolve` identifier JSON is the exact
   shared flat shape `lit-search` emits per candidate --
@@ -114,6 +135,17 @@ match -- judge it, don't assume).
 through verbatim (a list of `{"key","name","parentCollection"}`) -- this
 skill doesn't independently validate or guarantee that shape, only relays
 it.
+
+**`--list-collection`** -- `{"status":"ok","library":{...},"collection":{"id","name"},"recursive":bool,"sub_collections_included":[{"id","name"},...],"count":int,"items":[...],"attachments_and_notes_excluded":int}`.
+Each entry in `"items"` is `{"item_key","title","item_type","year","identifier":{"doi","title","arxiv_id"}}`
+-- the `"identifier"` is the same flat shape `lit-search`/`--check-duplicate`/
+`--resolve` use, so pass it straight through to either of those if you need
+a citekey or full CSL fields for a specific item. Attachments/notes/
+annotations are counted but excluded from `"items"` (they're not papers).
+`"halt"`/`"ambiguous_collection_name"` (with `"candidates"`, same shape as
+`--file`'s) fires when a name matches more than one collection -- ask the
+researcher, or retry with the specific `"C<id>"`. `"error"`/`"invalid_input"`
+fires when the id/name doesn't exist at all.
 
 **`--file`** success -- `filed:true`:
 ```json
