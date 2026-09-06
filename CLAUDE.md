@@ -237,9 +237,11 @@ what that decision turns out to be.
   either), skip straight to asking the researcher directly.
 - **Ask First:** any value recovered via external lookup is shown to the
   researcher for confirmation before use anywhere. Claude Code cannot write
-  it into Zotero directly yet (AD-3's local write mechanism is unresolved,
-  pending a later spike) -- confirm it, then hand it to the researcher to
-  enter into Zotero themselves. If the researcher rejects the recovered
+  it into an existing Zotero item directly yet -- AD-3's write mechanism is
+  resolved (see below), but `zotero-code-execution` currently only files
+  *new* items, with no update-existing-item mode -- confirm the value,
+  then hand it to the researcher to enter into Zotero themselves. If the
+  researcher rejects the recovered
   value, treat the field as unresolved and fall through to the next rule --
   never re-propose the same rejected value or invent an alternative.
 - **If external lookup also can't resolve the value (or the researcher
@@ -256,9 +258,29 @@ what that decision turns out to be.
 - This checklist and detection behavior are canonically defined in
   `spec-zotero-citation-field-contract.md` in the harness planning repo (the
   sibling planning repo's
-  `_bmad-output/implementation-artifacts/`). Zotero-write enforcement on
-  actual filing only becomes exercisable once the CAP-4/AD-3 write-mechanism
-  spike lands -- until then this is flag-and-ask, not auto-fix.
+  `_bmad-output/implementation-artifacts/`).
+- **Filing-time enforcement is now exercisable.** AD-3's write mechanism is
+  a **closed decision** (approved by the researcher on 2026-09-06): writes
+  go through Zotero desktop's local Connector HTTP endpoint, never
+  Zotero's cloud web API; the alternative "Write Endpoint" plugin
+  candidate was evaluated and rejected. Full rationale is in the story
+  file's Spec Change Log:
+  `_bmad-output/specs/spec-ai-research-harness/stories/5-zotero-write-mechanism-spike-filing.md`
+  in the sibling planning repo. `.claude/skills/zotero-code-execution/` can
+  actually file a new item and resolve it live, so this checklist runs for
+  real against `zotero_file.py --file`'s `resolved_fields` output -- see
+  that skill's `SKILL.md` for the CSL-JSON field-name mapping. This is
+  still flag-and-ask, not auto-fix: on a Required-field gap, attempt the
+  external-lookup chain above, then ask the researcher to enter any
+  confirmed value into Zotero themselves -- `zotero-code-execution` has no
+  update-existing-item mode yet, only new-item filing.
+- **Housekeeping left from story 5's live spike/verification testing:**
+  four disposable test items still need manual deletion from the researcher's
+  real Zotero library (`test_ai_research_harness` collection; titles
+  contain "safe to delete (story 5" / "SPIKE-TEST") -- there is no delete
+  endpoint available through either the Connector or Better BibTeX APIs,
+  so this is a one-time manual cleanup step, not something Claude Code can
+  do itself.
 
 ## Obsidian research knowledge base
 
