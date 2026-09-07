@@ -1,6 +1,6 @@
 ---
 name: zotero-code-execution
-description: Check for an existing Zotero item by DOI/title/arXiv id, resolve one live, check the current default filing target, or file a researcher-confirmed paper into the local Zotero library. Use when the researcher confirms a candidate paper (from lit-search or otherwise) should be filed into Zotero, or when Claude Code needs to check for a duplicate, re-resolve a citekey, or see which collection filing would land in right now.
+description: Check for an existing Zotero item by DOI/title/arXiv id, resolve one live, pull its stored PDF/fulltext/abstract content into context, check the current default filing target, or file a researcher-confirmed paper into the local Zotero library. Use when the researcher confirms a candidate paper (from lit-search or otherwise) should be filed into Zotero, when Claude Code needs to read/summarize a paper already in the library, or when it needs to check for a duplicate, re-resolve a citekey, or see which collection filing would land in right now.
 ---
 
 # zotero-code-execution
@@ -31,7 +31,7 @@ communicate with Zotero" enabled (Settings -> Advanced).
 
 ## Invocation
 
-Five mutually exclusive modes:
+Six mutually exclusive modes:
 
 ```bash
 # 1. What would filing hit right now? (AD-2's default target)
@@ -45,6 +45,12 @@ uv run .claude/skills/zotero-code-execution/zotero_file.py \
 uv run .claude/skills/zotero-code-execution/zotero_file.py \
   --resolve '{"doi":"10.xxxx/yyyy","title":"...","arxiv_id":null}'
 
+# 4. File a researcher-confirmed candidate: dup-check, write, resolve, confirm.
+uv run .claude/skills/zotero-code-execution/zotero_file.py \
+  --file '{"doi":"10.xxxx/yyyy","title":"...","arxiv_id":null}' \
+  --item '{"itemType":"journalArticle","title":"...","creators":[{"firstName":"A","lastName":"B","creatorType":"author"}],"date":"2024","DOI":"10.xxxx/yyyy","url":"..."}' \
+  --researcher-confirmed
+
 # 5a. Browse everything already filed in a collection, by id from
 #     --check-target's "targets" (recurses into sub-collections by default).
 uv run .claude/skills/zotero-code-execution/zotero_file.py --list-collection "C69"
@@ -56,11 +62,10 @@ uv run .claude/skills/zotero-code-execution/zotero_file.py --list-collection "su
 # 5c. Direct members only, no sub-collections.
 uv run .claude/skills/zotero-code-execution/zotero_file.py --list-collection "C44" --no-recursive
 
-# 4. File a researcher-confirmed candidate: dup-check, write, resolve, confirm.
+# 6. Pull a resolved item's content into context (CAP-5, AD-5): fulltext-index
+#    cache, else local PDF path, else CSL abstract. Read-only, resolves live.
 uv run .claude/skills/zotero-code-execution/zotero_file.py \
-  --file '{"doi":"10.xxxx/yyyy","title":"...","arxiv_id":null}' \
-  --item '{"itemType":"journalArticle","title":"...","creators":[{"firstName":"A","lastName":"B","creatorType":"author"}],"date":"2024","DOI":"10.xxxx/yyyy","url":"..."}' \
-  --researcher-confirmed
+  --get-content '{"doi":"10.xxxx/yyyy","title":"...","arxiv_id":null}'
 ```
 
 **`--list-collection COLLECTION_REF`** -- use this whenever you need to know
@@ -73,13 +78,33 @@ collection name. Mechanically different from every other mode: it reads
 script's module docstring if you need the why. Still fully read-only and
 fully local.
 
-- The `--file`/`--check-duplicate`/`--resolve` identifier JSON is the exact
-  shared flat shape `lit-search` emits per candidate --
+- The `--file`/`--check-duplicate`/`--resolve`/`--get-content` identifier
+  JSON is the exact shared flat shape `lit-search` emits per candidate --
   `{"doi","title","arxiv_id"}`. Pass it straight through; no adapter (per
   the story's Always rule and ARCHITECTURE-SPINE.md's Consistency
   Conventions). At least one of the three must be a non-empty string --
   an all-null/all-blank identifier is rejected (`"invalid_input"`) rather
   than silently reporting "no duplicate found."
+- `--get-content` resolves live (AD-4, same as `--resolve` -- never cached
+  across calls) then, per AD-5, tries each attachment's `.zotero-ft-cache`
+  sidecar first (across *every* attachment key before falling through --
+  not just the first, and skipping an empty/whitespace-only cache file as
+  a non-hit), then each attachment's local `.pdf` path (again across every
+  key -- if one attachment folder somehow holds more than one `.pdf`, the
+  alphabetically-first regular file wins), then the item's CSL `abstract`.
+  It never opens or parses a PDF itself -- on a `"local_pdf"` hit it only
+  returns the absolute path so Claude Code can read it natively for
+  page/figure-level detail. Read-only: it reads from
+  `~/Zotero/storage/` (that's the whole mechanism above) but never writes
+  there or anywhere else. If multiple attachments each have usable
+  content, the first one found (in Better BibTeX's own `item.attachments`
+  order) wins silently -- if that's ever the wrong one in practice, ask
+  the researcher rather than building disambiguation preemptively (per the
+  story's Ask First clause). Set `ZOTERO_STORAGE_PATH` if the researcher's
+  Zotero data directory isn't the default `~/Zotero/storage` (mirrors
+  `ZOTERO_SQLITE_PATH` for `--list-collection`) -- a missing/misconfigured
+  path there is reported as `"zotero_storage_unavailable"`, not silently
+  treated as "no content."
 - `--item` is a native Zotero item payload (itemType + fields + creators)
   for `--file` only -- assemble it from whatever the researcher confirmed
   plus anything `lit-search` already surfaced (title/year/authors/DOI at
@@ -135,6 +160,44 @@ match -- judge it, don't assume).
 through verbatim (a list of `{"key","name","parentCollection"}`) -- this
 skill doesn't independently validate or guarantee that shape, only relays
 it.
+
+**`--get-content`** (CAP-5, AD-5) -- `{"status":"ok","found":true,"source":"fulltext_index"|"local_pdf"|"abstract", "citekey", "item_key", "resolved_fields", ...}`:
+- `"source":"fulltext_index"` -- a `.zotero-ft-cache` sidecar was found for
+  some attachment (tried across *every* attachment key first, per AD-5).
+  `"content"` holds the full cached text. No PDF is ever opened for this
+  path.
+- `"source":"local_pdf"` -- no cache on any attachment, but a locally-synced
+  PDF was found (again tried across every attachment key). `"local_path"`
+  is the absolute path to a real file on disk -- read it natively for
+  page/figure-level detail.
+- `"source":"abstract"` -- no cache and no local PDF on any attachment.
+  The abstract text lives in `"resolved_fields"."abstract"` (already
+  included per the rule above) -- there is no separate top-level
+  `"content"` field for this case.
+- `{"status":"ok","found":false}` -- the identifier matched nothing (same
+  shape as `--resolve`'s not-found case).
+- `{"status":"error","reason":"no_content_available"}` -- the item was
+  found but has no cached fulltext, no local PDF, and no abstract across
+  every attachment tried; `"citekey"`/`"item_key"` are still included for
+  context.
+- `{"status":"error","reason":"fields_lookup_failed"}` -- a match was found
+  but Better BibTeX hasn't assigned it a citekey yet (the same indexing
+  race `--file`'s `"resolve_after_write_failed"` guards against, most
+  likely right after a fresh filing) -- re-run `--get-content` for this
+  identifier in a moment; this is distinct from `"no_content_available"`
+  and must not be reported to the researcher as "no content."
+- `{"status":"error","reason":"zotero_storage_unavailable"}` -- the item
+  has attachments to look up but the configured storage root (default
+  `~/Zotero/storage`, or `ZOTERO_STORAGE_PATH` if set) doesn't exist on
+  disk -- a configuration problem, not "no content available." Check/set
+  `ZOTERO_STORAGE_PATH`.
+- Every hit (`fulltext_index`/`local_pdf`/`abstract`) also carries the same
+  Required-field-checklist reminder `--file` gives on success -- CLAUDE.md's
+  "checked on every touch, including read (CAP-1/CAP-5)" rule applies here
+  too, not just to filing.
+- Read-only and resolves live every call (AD-4) -- never caches a
+  citekey/item-key/attachment-key mapping, and never writes to Zotero or
+  `~/Zotero/storage/`.
 
 **`--list-collection`** -- `{"status":"ok","library":{...},"collection":{"id","name"},"recursive":bool,"sub_collections_included":[{"id","name"},...],"count":int,"items":[...],"attachments_and_notes_excluded":int}`.
 Each entry in `"items"` is `{"item_key","title","item_type","year","identifier":{"doi","title","arxiv_id"}}`
@@ -197,8 +260,15 @@ than retrying in a loop), `"resolve_after_write_failed"` /
 `"move_to_collection_failed"` (the write itself succeeded but a follow-up
 step didn't -- the response still carries whatever citekey/item_key/
 library could be recovered; the item already exists, don't file it
-again), or `"unexpected_error"` (an unhandled failure of some other kind --
-still a single JSON object, never a raw traceback, per AD-8).
+again), `"no_content_available"` (`--get-content` only -- the item was
+found but had no cached fulltext, no local PDF, and no abstract across
+every attachment tried), `"fields_lookup_failed"` (`--get-content` only --
+matched but Better BibTeX hasn't assigned a citekey yet; re-run in a
+moment, distinct from `"no_content_available"`), `"zotero_storage_unavailable"`
+(`--get-content` only -- the configured storage root doesn't exist on
+disk; check/set `ZOTERO_STORAGE_PATH`), or `"unexpected_error"` (an
+unhandled failure of some other kind -- still a single JSON object, never
+a raw traceback, per AD-8).
 
 ## Required-field checklist (post-file, before confirming the citekey)
 

@@ -14,7 +14,7 @@ is the only mechanism that can recover a Better-BibTeX citation key at
 all. Both endpoints live on the same local Zotero HTTP server
 (127.0.0.1:23119) -- nothing here ever leaves the machine.
 
-Five modes, mutually exclusive:
+Six modes, mutually exclusive:
     --check-target                       Show the collection Zotero would
                                           file into right now (whatever's
                                           selected in the desktop UI).
@@ -31,6 +31,20 @@ Five modes, mutually exclusive:
                                           live (citekey/item key/attachments/
                                           fields) -- AD-4's "never cache
                                           across invocations" made concrete.
+    --get-content IDENTIFIER_JSON         Pull a resolved item's content
+                                          into context (CAP-5, AD-5): tries
+                                          each attachment's `.zotero-ft-
+                                          cache` sidecar first (across every
+                                          attachment key), then each
+                                          attachment's local PDF path
+                                          (across every key again -- if an
+                                          attachment folder somehow has more
+                                          than one `.pdf`, the alphabetically
+                                          -first one wins), then falls back
+                                          to the CSL `abstract`. Read-only
+                                          (never writes to `~/Zotero/
+                                          storage/`, only reads from it) and
+                                          resolves live like --resolve.
     --list-collection COLLECTION_REF      Browse -- list every paper already
                                           filed in a collection (by "C<id>"
                                           from --check-target's "targets", or
@@ -133,6 +147,13 @@ SQLITE_LOCKED_RETRIES = 3
 SQLITE_LOCKED_RETRY_DELAY_SECONDS = 0.3
 NON_PAPER_ITEM_TYPES = {"attachment", "note", "annotation"}
 
+# --get-content (CAP-5, AD-5) reads each attachment's storage directory
+# directly off disk -- confirmed live as zotero.sqlite's sibling dir. Set
+# ZOTERO_STORAGE_PATH if the researcher's Zotero data directory isn't the
+# default `~/Zotero/storage`. Mirrors ZOTERO_SQLITE_ENV_VAR above.
+ZOTERO_STORAGE_ENV_VAR = "ZOTERO_STORAGE_PATH"
+DEFAULT_ZOTERO_STORAGE_PATH = os.path.expanduser("~/Zotero/storage")
+
 
 class ZoteroNotRunningError(RuntimeError):
     """Zotero desktop's local HTTP server (127.0.0.1:23119) is unreachable."""
@@ -141,6 +162,14 @@ class ZoteroNotRunningError(RuntimeError):
 class ZoteroDatabaseError(RuntimeError):
     """The local zotero.sqlite file (--list-collection only) couldn't be
     opened or read."""
+
+
+class ZoteroStorageError(RuntimeError):
+    """Zotero's local attachment storage directory (--get-content only)
+    couldn't be found -- distinct from "this item genuinely has no
+    content": a missing/misconfigured ZOTERO_STORAGE_PATH would otherwise
+    make every attachment lookup silently fail and look identical to a
+    real no-content-available result."""
 
 
 class ZoteroTimeoutError(RuntimeError):
@@ -546,6 +575,221 @@ def run_resolve(identifier: dict[str, Any]) -> dict[str, Any]:
             "message": "No existing item found for this identifier.",
         }
     return {"status": "ok", "found": True, **resolved}
+
+
+# ---------------------------------------------------------------------------
+# --get-content -- CAP-5, AD-5: fulltext-cache -> local PDF -> CSL abstract.
+# Reuses resolve_item() (live per AD-4, no caching across invocations) for
+# the item + its attachment_keys, then reads each attachment's storage
+# directory directly off disk -- confirmed live: `.zotero-ft-cache` can
+# exist even when the sibling `.pdf` isn't synced locally.
+# ---------------------------------------------------------------------------
+
+
+def _attachment_storage_dir(attachment_key: str) -> str:
+    storage_path = os.environ.get(ZOTERO_STORAGE_ENV_VAR) or DEFAULT_ZOTERO_STORAGE_PATH
+    return os.path.join(storage_path, attachment_key)
+
+
+def _require_storage_root() -> str:
+    """Returns the configured storage root if it actually exists, else
+    raises ZoteroStorageError -- mirrors _open_zotero_db's clear-error
+    pattern below (same idea: a missing/misconfigured local path gets a
+    named, actionable error rather than silently degrading into what
+    looks like "this item has no content")."""
+    storage_path = os.environ.get(ZOTERO_STORAGE_ENV_VAR) or DEFAULT_ZOTERO_STORAGE_PATH
+    if not os.path.isdir(storage_path):
+        raise ZoteroStorageError(
+            f"Zotero's local attachment storage directory wasn't found at "
+            f"{storage_path!r}. Set {ZOTERO_STORAGE_ENV_VAR} if the "
+            "researcher's Zotero data directory isn't the default "
+            "(~/Zotero/storage), or ask them where it lives."
+        )
+    return storage_path
+
+
+def _find_ft_cache(attachment_key: str) -> str | None:
+    """AD-5: prefer Zotero's own pre-extracted fulltext index over the PDF
+    -- returns the `.zotero-ft-cache` path for this attachment key if it
+    exists and is a real file, else None."""
+    path = os.path.join(_attachment_storage_dir(attachment_key), ".zotero-ft-cache")
+    return path if os.path.isfile(path) else None
+
+
+def _find_local_pdf(attachment_key: str) -> str | None:
+    """Returns a PDF's absolute path inside this attachment's storage
+    directory if one is actually synced locally, else None. A cloud-only/
+    unsynced attachment can have this directory (and even a cached
+    `.zotero-ft-cache`) with no `.pdf` inside it at all -- confirmed live,
+    see module docstring -- so this is a real, expected None case, not a
+    bug. If more than one `.pdf`-suffixed regular file is present (rare --
+    a single imported attachment normally holds exactly one), the
+    alphabetically-first one is returned; directory entries that merely
+    end in `.pdf` but aren't regular files are skipped."""
+    directory = _attachment_storage_dir(attachment_key)
+    if not os.path.isdir(directory):
+        return None
+    try:
+        entries = sorted(os.listdir(directory))
+    except OSError:
+        return None
+    for name in entries:
+        if not name.lower().endswith(".pdf"):
+            continue
+        candidate = os.path.join(directory, name)
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+# Echoes --file's Required-field-checklist reminder (see run_file below) --
+# CLAUDE.md's "Citation-format & field contract" section (its "checked on
+# every touch, including read (CAP-1/CAP-5)" rule) applies to a
+# --get-content read exactly as it does to a --file write.
+_FIELD_CHECKLIST_REMINDER = (
+    "Now run the Required-field checklist (CLAUDE.md citation-format & "
+    "field contract) against \"resolved_fields\" -- that section applies on "
+    "every touch, including a read like this one (CAP-5), not just filing."
+)
+
+
+def run_get_content(identifier: dict[str, Any]) -> dict[str, Any]:
+    # Re-resolve live every call (AD-4) -- never cache citekey/item-key/
+    # attachment-key across invocations, even within one conversation.
+    resolved = resolve_item(identifier, retries=1)
+    if not resolved:
+        return {
+            "status": "ok",
+            "found": False,
+            "message": "No existing item found for this identifier.",
+        }
+
+    citekey = resolved.get("citekey")
+    item_key = resolved.get("item_key")
+    resolved_fields = resolved.get("resolved_fields")
+    attachment_keys = resolved.get("attachment_keys") or []
+
+    # resolve_item()'s own documented race: a match was found but Better
+    # BibTeX hasn't assigned a citekey yet (its early-return branch forces
+    # attachment_keys/resolved_fields empty in this case) -- report this
+    # distinctly rather than letting it silently fall through the passes
+    # below into a misleading "no content available" (mirrors --file's
+    # "resolve_after_write_failed" message for the same underlying race).
+    if resolved.get("fields_lookup_failed") and not citekey:
+        return {
+            "status": "error",
+            "reason": "fields_lookup_failed",
+            "message": (
+                "This identifier matched an item in Zotero, but Better "
+                "BibTeX hasn't finished assigning a citekey yet (the same "
+                "indexing race --file's \"resolve_after_write_failed\" "
+                "guards against right after a fresh filing) -- re-run "
+                "--get-content for this identifier in a moment rather than "
+                "treating this as \"no content available\"."
+            ),
+            "item_key": item_key,
+        }
+
+    # A missing/misconfigured storage root would otherwise make every
+    # attachment lookup below silently fail and look identical to a real
+    # "no content available" -- only relevant when there's actually
+    # something to look up.
+    if attachment_keys:
+        try:
+            _require_storage_root()
+        except ZoteroStorageError as exc:
+            return {
+                "status": "error",
+                "reason": "zotero_storage_unavailable",
+                "message": str(exc),
+                "citekey": citekey,
+                "item_key": item_key,
+            }
+
+    # Pass 1: try every attachment's fulltext-index cache first, across the
+    # whole list, before any PDF or abstract fallback is even considered
+    # (AD-5 ordering) -- "first found wins silently" per this story's Ask
+    # First clause on multiple usable attachments.
+    for key in attachment_keys:
+        cache_path = _find_ft_cache(key)
+        if not cache_path:
+            continue
+        try:
+            with open(cache_path, "r", encoding="utf-8", errors="replace") as fh:
+                content = fh.read()
+        except OSError:
+            continue  # try the next attachment key rather than fail outright
+        if not content.strip():
+            # An empty/whitespace-only extraction isn't usable content --
+            # don't let it block falling through to the PDF/abstract passes.
+            continue
+        return {
+            "status": "ok",
+            "found": True,
+            "source": "fulltext_index",
+            "content": content,
+            "citekey": citekey,
+            "item_key": item_key,
+            "resolved_fields": resolved_fields,
+            "message": (
+                f"Fulltext index hit for {citekey!r} (attachment {key}) -- "
+                "no PDF was opened. " + _FIELD_CHECKLIST_REMINDER
+            ),
+        }
+
+    # Pass 2: local PDF path across every attachment -- only reached once no
+    # key in the library had a cache hit.
+    for key in attachment_keys:
+        pdf_path = _find_local_pdf(key)
+        if not pdf_path:
+            continue
+        return {
+            "status": "ok",
+            "found": True,
+            "source": "local_pdf",
+            "local_path": pdf_path,
+            "citekey": citekey,
+            "item_key": item_key,
+            "resolved_fields": resolved_fields,
+            "message": (
+                f"No fulltext index cached for {citekey!r}; local PDF found "
+                f"at attachment {key} -- read it natively for page/figure-"
+                "level detail. " + _FIELD_CHECKLIST_REMINDER
+            ),
+        }
+
+    # Fall back to the CSL abstract -- every attachment key was tried above
+    # for both cache and PDF before falling through this far.
+    abstract = resolved_fields.get("abstract") if isinstance(resolved_fields, dict) else None
+    abstract = abstract.strip() if isinstance(abstract, str) else ""
+    if abstract:
+        return {
+            "status": "ok",
+            "found": True,
+            "source": "abstract",
+            "citekey": citekey,
+            "item_key": item_key,
+            "resolved_fields": resolved_fields,
+            "message": (
+                f"No fulltext index or local PDF for {citekey!r} across "
+                f"{len(attachment_keys)} attachment(s) -- falling back to "
+                "the CSL abstract (\"resolved_fields\".\"abstract\"). "
+                + _FIELD_CHECKLIST_REMINDER
+            ),
+        }
+
+    return {
+        "status": "error",
+        "reason": "no_content_available",
+        "message": (
+            f"{citekey!r} has no cached fulltext index, no local PDF, and no "
+            "abstract to fall back to across "
+            f"{len(attachment_keys)} attachment(s) -- nothing to pull into "
+            "context for this item."
+        ),
+        "citekey": citekey,
+        "item_key": item_key,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1003,6 +1247,7 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--check-target", action="store_true", help="Show the collection filing would land in right now.")
     mode.add_argument("--check-duplicate", metavar="IDENTIFIER_JSON", help='Live-identifier search only, e.g. \'{"doi":"10.x/y","title":"...","arxiv_id":null}\'.')
     mode.add_argument("--resolve", metavar="IDENTIFIER_JSON", help="Re-resolve an already-filed item live by identifier.")
+    mode.add_argument("--get-content", metavar="IDENTIFIER_JSON", help="Pull a resolved item's content into context: fulltext-index cache, else local PDF path, else CSL abstract (AD-5).")
     mode.add_argument("--list-collection", metavar="COLLECTION_REF", help='List every paper already filed in a collection -- "C69" (from --check-target\'s "targets") or a name. Recurses into sub-collections by default; pass --no-recursive to list only direct members.')
     mode.add_argument("--file", metavar="IDENTIFIER_JSON", help="File a new item after dup-check, then resolve + confirm citekey.")
 
@@ -1055,6 +1300,9 @@ def main() -> int:
         elif args.resolve is not None:
             identifier = validate_identifier(parse_json_arg(args.resolve, "--resolve"), "--resolve")
             result = run_resolve(identifier)
+        elif args.get_content is not None:
+            identifier = validate_identifier(parse_json_arg(args.get_content, "--get-content"), "--get-content")
+            result = run_get_content(identifier)
         elif args.list_collection is not None:
             result = run_list_collection(args.list_collection, recursive=not args.no_recursive)
         else:
