@@ -1,0 +1,424 @@
+% Default Beamer preamble/theme/footline/titlepage for latex-presentation
+% decks (spec: spec-latex-presentation-generation.md). Extracted verbatim
+% from the researcher-supplied reference template through
+% \begin{document} + the titlepage frame -- this is the reusable default
+% look, not the deck-specific content.
+%
+% Usage (see ../SKILL.md): copy this whole file into a new
+% presentations/<slug>/main.tex, replace the \title/\author placeholders
+% below with the actual deck's title/author, then append \section{...} +
+% \begin{frame}...\end{frame} content after the marker near the bottom --
+% see frame-patterns.tex for layout options to draw from. This is a
+% starting point, not an enforced contract: a deck that asks for different
+% theming/layout starts from a blank/alternate preamble instead of this
+% file (never silently blend the two).
+%
+% `siunitx` and `fontawesome` were dropped from the researcher's original
+% template on extraction: neither package's commands are used anywhere in
+% this file or frame-patterns.tex, and both are absent from this repo's
+% TeX Live install (`texlive-science`/`texlive-fonts-extra`, not part of
+% the base+recommended+extra profile confirmed working here), which broke
+% this file's compile with a fatal "Emergency stop" and no PDF at all --
+% not the recoverable .nav/.toc quirk documented in SKILL.md, a real
+% failure. Add either back to a specific deck's own preamble if that
+% deck actually needs `\si{}`/`\num{}` or `\faIcon{}` -- see deferred-work.md
+% for the underlying TeX Live gap.
+\documentclass[9pt,xcolor=table, dvipsnames]{beamer}
+\usetheme{Madrid}
+\usepackage[utf8]{inputenc}
+\usepackage{pgfpages}
+\usepackage{subcaption}
+\usepackage{pgfplots}
+\usepackage{multirow}
+\usepackage{multicol}
+\usepackage{multirow}
+\usepackage{tikz}
+\usepackage{tikz-3dplot}
+\usetikzlibrary{calc, shapes, patterns, shadings, shapes.geometric, positioning}
+
+\graphicspath{{./images/}}
+
+\setbeamercolor{author}{fg=black}
+\setbeamercolor{date}{fg=black}
+
+\setbeamercolor{section in sidebar}{fg=white }
+\setbeamercolor{subsection in sidebar}{fg=white }
+\setbeamercolor{section in sidebar shadbeaed}{fg=white }
+\setbeamercolor{subsection in sidebar shaded}{fg=white }
+
+\usenavigationsymbolstemplate{}
+
+\AtBeginSection[]
+{
+\begin{frame}
+\frametitle{Presentation Layout}
+\tableofcontents[
+  sectionstyle=shaded,
+  currentsection=show
+]
+\end{frame}
+}
+
+\setbeamertemplate{footline}
+{
+  \leavevmode%
+  \hbox{%
+\begin{beamercolorbox}[wd=.45\paperwidth,ht=2.25ex,dp=1ex,center]{author
+in head/foot}%
+    \usebeamerfont{author in head/foot}
+      \insertsection
+  \end{beamercolorbox}%
+\begin{beamercolorbox}[wd=.45\paperwidth,ht=2.25ex,dp=1ex,center]{title
+in head/foot}%
+    \usebeamerfont{title in head/foot}
+      \insertsubsection
+  \end{beamercolorbox}%
+\begin{beamercolorbox}[wd=.10\paperwidth,ht=2.25ex,dp=1ex,right]{date
+in head/foot}%
+    \usebeamerfont{date in head/foot}
+\insertframenumber{} / \inserttotalframenumber\hspace*{2ex}  \end{beamercolorbox}}%
+  \vskip0pt%
+}
+
+\begin{document}
+\titlegraphic{\includegraphics[width=3.2cm]{claude.png}}
+\title[Your New Lab Mate]{
+Your New Lab Mate Has Hands\\[2mm]
+\large An AI research partner for a biotech PhD}
+\author{Cedric}
+\date{}
+
+{
+  \begin{frame}
+    \titlepage
+  \end{frame}
+}
+
+% ---------------------------------------------------------------------
+% Deck content starts here. Add \section{...} calls (each one triggers
+% the AtBeginSection divider frame above) and \begin{frame}...\end{frame}
+% blocks drafted from what the researcher actually gave you -- see
+% frame-patterns.tex for layout patterns (columns+figure, equations,
+% block+figure) to draw from, not to reproduce verbatim.
+% ---------------------------------------------------------------------
+
+\section{The problem you don't have yet}
+
+\begin{frame}
+\frametitle{Year one of a PhD: a preview}
+\begin{minipage}{\textwidth}
+\begin{columns}
+\begin{column}{0.58\textwidth}
+\begin{itemize}
+    \item 47 PDFs in \texttt{Downloads/}, all named
+          \texttt{s41586-024-07123-4.pdf}
+    \item A citation key you typed by hand at 2am. It was wrong.
+          \texttt{biber} knew. \texttt{biber} said nothing useful.
+    \item A number in your draft, and nobody -- including you -- is
+          entirely sure which version of the script produced it
+    \item Five separate tools, and \emph{you} are the glue between them
+\end{itemize}
+\end{column}
+\begin{column}{0.42\textwidth}
+\begin{block}{The actual cost}
+None of the individual steps are hard. The cost is the constant hand-off
+between them -- and every hand-off is a place to lose time, introduce a
+wrong number, or use a stale citation key.
+\end{block}
+\end{column}
+\end{columns}
+\end{minipage}
+\end{frame}
+
+\begin{frame}
+\frametitle{``But I already have ChatGPT''}
+A general chat AI can discuss a paper and draft a paragraph. It also
+\alert{has no hands}:
+\begin{itemize}
+    \item it cannot open the actual PDF sitting in your actual folder
+    \item it cannot run the actual analysis script on your actual data
+    \item it cannot write into the actual \texttt{.tex} file
+    \item it cannot touch the actual Zotero library
+\end{itemize}
+\vspace{2mm}
+So you still do all of the moving. You are a very expensive USB cable.
+\vspace{2mm}
+\begin{block}{This one has hands}
+Slightly alarming. Extremely useful. It opens the files, runs the scripts,
+files the papers, writes the numbers, and compiles the PDF -- inside one
+continuous conversation, with every step recorded.
+\end{block}
+\end{frame}
+
+\section{The crew}
+
+\begin{frame}
+\frametitle{Zotero (+ Better BibTeX): the one true library}
+\begin{columns}
+\begin{column}{0.6\textwidth}
+\begin{itemize}
+    \item Your reference library is the \emph{single system of record}.
+          Nothing gets re-typed anywhere else.
+    \item Claude Code acts as a \emph{second user of your library}: it
+          files into the collections you already made, and never invents
+          its own folder structure.
+    \item Better BibTeX owns the citation keys and keeps
+          \texttt{references.bib} exported automatically.
+    \item Claude Code only ever \emph{reads} that file.
+\end{itemize}
+\end{column}
+\begin{column}{0.4\textwidth}
+\begin{figure}
+\includegraphics[width=4.2cm]{zotero.png}
+\end{figure}
+\end{column}
+\end{columns}
+\vspace{1mm}
+\begin{block}{House rule number one}
+It has never once written \texttt{smith2019a?} and hoped. If the paper
+isn't filed yet, it tells you so instead of guessing a key.
+\end{block}
+\end{frame}
+
+\begin{frame}
+\frametitle{LaTeX / TeX Live: the writing surface}
+\begin{columns}
+\begin{column}{0.6\textwidth}
+\begin{itemize}
+    \item TeX Live compiles the document. Claude Code runs the build loop
+          and gets back a \emph{structured} list of problems -- file,
+          line, package, message -- instead of 4000 lines of log.
+    \item You keep a normal human window: VS Code with LaTeX Workshop,
+          PDF preview on the right, click the PDF to jump to the source
+          line.
+    \item That editor is deliberately \emph{not} automated away. It reads
+          the same git-tracked files.
+\end{itemize}
+\end{column}
+\begin{column}{0.4\textwidth}
+\begin{figure}
+\includegraphics[width=4.2cm]{latex.png}
+\end{figure}
+\end{column}
+\end{columns}
+\vspace{1mm}
+LaTeX will still invent new and creative ways to complain. The difference
+is that somebody else now reads the complaint first.
+\end{frame}
+
+\begin{frame}[fragile]
+\frametitle{Beamer: slides, from the same machinery}
+\begin{columns}[T]
+\begin{column}{0.52\textwidth}
+\vspace{4mm}
+\begin{block}{\texttt{presentations/sema-intro/main.tex}}
+\begin{semiverbatim}\scriptsize
+\\section\{The crew\}
+
+\\begin\{frame\}
+\\frametitle\{Beamer: slides\}
+  \\includegraphics\{obsidian.png\}
+\\end\{frame\}
+\end{semiverbatim}
+\end{block}
+\end{column}
+\begin{column}{0.48\textwidth}
+\vspace{4mm}
+\begin{block}{You are currently looking at the output}
+This deck was drafted and compiled by the same harness it is describing,
+from your own Beamer template, in one conversation.
+\end{block}
+\vspace{2mm}
+Slides are a sibling deliverable to the thesis -- same figures, same
+rules, separate folder.
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}
+\frametitle{Obsidian: where understanding goes to survive}
+\begin{columns}
+\begin{column}{0.62\textwidth}
+\begin{itemize}
+    \item \texttt{knowledge-base/} is a plain-markdown vault on your own
+          disk. No cloud, no lock-in, no database.
+    \item When you and Claude Code finish arguing about a paper, the
+          understanding does not evaporate with the chat window: it
+          offers to write it down.
+    \item It drafts the note first and saves only if you say yes. It
+          never invents a finding you didn't actually discuss.
+    \item \texttt{[[Wikilinks]]} between notes, graph view for free.
+    \item No folder scheme imposed upfront -- the structure emerges from
+          how you actually end up using it.
+\end{itemize}
+\end{column}
+\begin{column}{0.38\textwidth}
+\begin{figure}
+\includegraphics[height=3.4cm]{obsidian.png}
+\end{figure}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}
+\frametitle{Semantic Scholar + OpenAlex: the literature radar}
+\begin{columns}
+\begin{column}{0.6\textwidth}
+\begin{itemize}
+    \item ``Find me papers like this one'' $\rightarrow$ Semantic
+          Scholar: what cites it, what it cites, what resembles it.
+    \item OpenAlex is the cross-check and the fallback when an abstract
+          is missing.
+    \item It does not stop at one hop. Promising results become new
+          seeds, and it keeps hopping until the subfield stops growing
+          -- snowball sampling, not a single lookup.
+    \item Candidates are shown to you in the conversation. Nothing is
+          filed until you pick.
+\end{itemize}
+\end{column}
+\begin{column}{0.4\textwidth}
+\begin{figure}
+\includegraphics[width=4.0cm]{semantic-scholar.png}\\[6mm]
+\includegraphics[width=4.0cm]{openalex.png}
+\end{figure}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}
+\frametitle{Git: an undo button for your thesis}
+\begin{columns}
+\begin{column}{0.62\textwidth}
+\begin{itemize}
+    \item Every edit is committed, scoped to exactly the files touched in
+          that one step -- never a giant ``saved everything'' blob.
+    \item The design goal, word for word: \emph{any single writing or
+          analysis step can be identified and reverted from git history
+          alone}.
+    \item Every generated figure and number carries a line saying which
+          script and which commit produced it.
+\end{itemize}
+\vspace{1mm}
+So ``where did this number come from?'' has an answer. In writing.
+Automatically.
+\end{column}
+\begin{column}{0.38\textwidth}
+\begin{figure}
+\includegraphics[width=3.4cm]{git.png}
+\end{figure}
+\end{column}
+\end{columns}
+\vspace{1mm}
+{\tiny Logos: Zotero, Obsidian, Semantic Scholar and Claude marks are
+public domain; LaTeX bird by Jonas Jared Jacek (CC BY 4.0); Git logo by
+Jason Long (CC BY 3.0); OpenAlex logo by OurResearch (MIT). Full credits
+in \texttt{images/CREDITS.md}.}
+\end{frame}
+
+\section{A day with it}
+
+\begin{frame}
+\frametitle{What it actually looks like}
+\begin{block}{You}
+``Find papers similar to the one I cited in the introduction.''
+\end{block}
+\textbf{It} searches Semantic Scholar, cross-checks OpenAlex, and shows
+you the candidates -- titles, years, abstracts -- in the conversation.
+\begin{block}{You}
+``Numbers 2, 5 and 7 look right.''
+\end{block}
+\textbf{It} checks your Zotero library for duplicates, files the three
+into your collection, and hands back the pinned citation keys.
+\begin{block}{You}
+``Use number 5 in the related-work paragraph.''
+\end{block}
+\textbf{It} re-reads the live bibliography, writes the citation,
+recompiles, and reports zero undefined references.
+\vspace{2mm}
+No manual Zotero clicking. No copy-paste. One conversation.
+\end{frame}
+
+\begin{frame}
+\frametitle{The whole loop, in one thread}
+\begin{center}
+\begin{tikzpicture}[
+  node distance=3mm,
+  every node/.style={font=\scriptsize},
+  box/.style={draw, rounded corners, fill=blue!10, minimum height=8mm,
+              minimum width=17mm, align=center},
+  arr/.style={-latex, thick, blue!50!black}
+]
+\node[box] (a) {papers};
+\node[box, right=of a] (b) {ideation};
+\node[box, right=of b] (c) {code};
+\node[box, right=of c] (d) {results};
+\node[box, right=of d] (e) {writing};
+\draw[arr] (a) -- (b);
+\draw[arr] (b) -- (c);
+\draw[arr] (c) -- (d);
+\draw[arr] (d) -- (e);
+\draw[arr] (e.south) -- ++(0,-5mm) -| (a.south);
+\end{tikzpicture}
+\end{center}
+\vspace{2mm}
+It opens the actual PDFs, runs the actual analysis scripts, files papers
+into the actual Zotero library with correct citation keys, and writes the
+actual numbers into a LaTeX document that compiles into a real, cited PDF
+-- all inside one continuous research thread, git-tracked at every step.
+\vspace{2mm}
+Instead of you hand-carrying results between five disconnected tools.
+\end{frame}
+
+\section{The fine print}
+
+\begin{frame}
+\frametitle{Things it is not allowed to do}
+\begin{itemize}
+    \item Invent a citation key. Ever. Not even a very plausible one.
+    \item Fabricate a number, a table, or a figure -- if the script
+          didn't produce it, it does not go on the page.
+    \item Overwrite something you wrote without asking first.
+    \item Hand you a generated result without saying which script and
+          which commit made it.
+\end{itemize}
+\vspace{2mm}
+Written into the spec as an explicit rule not to optimise around:
+\emph{a wrong number silently inserted is worse than one that requires a
+manual check.}
+\begin{block}{The important part}
+This is an assistant, not an autopilot. You are still the last check
+before anything counts as true. It just removes the twelve boring steps
+between having an idea and seeing whether it holds.
+\end{block}
+\end{frame}
+
+\begin{frame}
+\frametitle{What I actually need from you}
+\begin{columns}
+\begin{column}{0.62\textwidth}
+\begin{itemize}
+    \item The spec says this is ``not designed for broader
+          distribution''. Total addressable market: two people. You are
+          one of them.
+    \item The only success criterion with your name on it: \emph{the
+          pilot user uses it on her own real thesis material at least
+          once}.
+    \item So: one real task. A messy folder of PDFs, a related-work
+          section you have been avoiding, or a script whose output you
+          keep re-pasting by hand.
+\end{itemize}
+\vspace{2mm}
+Bring the worst one. That's the interesting test.
+\end{column}
+\begin{column}{0.38\textwidth}
+\begin{figure}
+\includegraphics[width=3.6cm]{claude.png}
+\end{figure}
+\vspace{2mm}
+{\footnotesize Doesn't drink coffee. \\ Doesn't need a fume hood. \\
+Does need you to say yes.}
+\end{column}
+\end{columns}
+\end{frame}
+
+\end{document}

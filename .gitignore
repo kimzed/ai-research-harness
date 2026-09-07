@@ -32,3 +32,31 @@ manuscript/**/*.glg
 
 # Compiled manuscript output -- source-of-truth is the .tex, not the PDF
 manuscript/**/*.pdf
+
+# LaTeX build artifacts for Beamer decks -- same list as manuscript/ above,
+# scoped to presentations/ for the same reason (latex-presentation decks).
+presentations/**/*.aux
+presentations/**/*.bbl
+presentations/**/*.bcf
+presentations/**/*.blg
+presentations/**/*.fdb_latexmk
+presentations/**/*.fls
+presentations/**/*.log
+presentations/**/*.out
+presentations/**/*.run.xml
+presentations/**/*.synctex.gz
+presentations/**/*.toc
+presentations/**/*.nav
+presentations/**/*.snm
+presentations/**/*.vrb
+presentations/**/*.idx
+presentations/**/*.ind
+presentations/**/*.ilg
+presentations/**/*.lof
+presentations/**/*.lot
+presentations/**/*.glo
+presentations/**/*.gls
+presentations/**/*.glg
+
+# Compiled deck output -- source-of-truth is the .tex, not the PDF
+presentations/**/*.pdf
