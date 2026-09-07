@@ -1,0 +1,77 @@
+% Layout-pattern reference for latex-presentation decks (spec:
+% spec-latex-presentation-generation.md). Extracted from the researcher's
+% reference template's example body frames.
+%
+% These are STYLE EXAMPLES of layout structure -- columns, equations,
+% block+figure -- not content to reproduce verbatim in a generated deck.
+% Draw the *pattern* (how a frame is laid out) and drop in the researcher's
+% actual content; never copy the placeholder text/labels below into a real
+% presentation. Not a standalone compilable file -- these frames are meant
+% to be lifted into a presentations/<slug>/main.tex that already has
+% default-preamble.tex's preamble (or an alternate one, on a theming
+% override) in place.
+
+% --- Pattern: two-column text (itemize) + figure -----------------------
+% Use for: introducing a topic with a short bulleted summary alongside a
+% supporting image.
+\begin{frame}
+\frametitle{Title slide}
+\begin{minipage}{\textwidth}
+\begin{columns}
+\begin{column}{0.5\textwidth}
+Normal text
+\begin{itemize}
+    \item item text
+    \item item text 2
+    \item item text 3
+\end{itemize}
+\end{column}
+\begin{column}{0.5\textwidth}
+\begin{figure}
+\includegraphics[width=6.5cm]{images/graph_social_media.png}
+\caption{Title image}
+\end{figure}
+\end{column}
+\end{columns}
+\end{minipage}
+\end{frame}
+
+% --- Pattern: equations + itemize (math-heavy slide) --------------------
+% Use for: defining notation/formalism before results depend on it.
+\begin{frame}
+\frametitle{Some equations}
+$G(V, E)$
+\begin{itemize}
+    \item $V$ super pixels
+    \item $E$ set of edges
+    \item $d$  number of connections
+\end{itemize}
+Matrix of embeddings $H$:
+\[ \mathcal H^{(l)} = [h_1^{(l)} ... h_{\left | V \right |}^{(l)}]^{\text{T}}\]
+\begin{itemize}
+    \item $|V|$ number of nodes
+    \item $l$ model´s layer
+\end{itemize}
+\end{frame}
+
+% --- Pattern: block + figure side-by-side -------------------------------
+% Use for: pairing a highlighted explanatory block (definition, takeaway,
+% caveat) with a supporting figure in the other column.
+\begin{frame}
+\frametitle{Slide with different columns}
+
+\begin{columns}
+\begin{column}{0.5\textwidth}
+
+\begin{block}{A block}
+Text inside my block. a block is kinda a slide inside a slide, in a rectangular shape.
+\end{block}
+\end{column}
+\begin{column}{0.5\textwidth}
+\begin{figure}
+\includegraphics{images/GNN_layers.PNG}
+\caption{an image on the right column}
+\end{figure}
+\end{column}
+\end{columns}
+\end{frame}

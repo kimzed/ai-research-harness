@@ -1,0 +1,103 @@
+% Default Beamer preamble/theme/footline/titlepage for latex-presentation
+% decks (spec: spec-latex-presentation-generation.md). Extracted verbatim
+% from the researcher-supplied reference template through
+% \begin{document} + the titlepage frame -- this is the reusable default
+% look, not the deck-specific content.
+%
+% Usage (see ../SKILL.md): copy this whole file into a new
+% presentations/<slug>/main.tex, replace the \title/\author placeholders
+% below with the actual deck's title/author, then append \section{...} +
+% \begin{frame}...\end{frame} content after the marker near the bottom --
+% see frame-patterns.tex for layout options to draw from. This is a
+% starting point, not an enforced contract: a deck that asks for different
+% theming/layout starts from a blank/alternate preamble instead of this
+% file (never silently blend the two).
+%
+% `siunitx` and `fontawesome` were dropped from the researcher's original
+% template on extraction: neither package's commands are used anywhere in
+% this file or frame-patterns.tex, and both are absent from this repo's
+% TeX Live install (`texlive-science`/`texlive-fonts-extra`, not part of
+% the base+recommended+extra profile confirmed working here), which broke
+% this file's compile with a fatal "Emergency stop" and no PDF at all --
+% not the recoverable .nav/.toc quirk documented in SKILL.md, a real
+% failure. Add either back to a specific deck's own preamble if that
+% deck actually needs `\si{}`/`\num{}` or `\faIcon{}` -- see deferred-work.md
+% for the underlying TeX Live gap.
+\documentclass[9pt,xcolor=table, dvipsnames]{beamer}
+\usetheme{Madrid}
+\usepackage[utf8]{inputenc}
+\usepackage{pgfpages}
+\usepackage{subcaption}
+\usepackage{pgfplots}
+\usepackage{multirow}
+\usepackage{multicol}
+\usepackage{multirow}
+\usepackage{tikz}
+\usepackage{tikz-3dplot}
+\usetikzlibrary{calc, shapes, patterns, shadings, shapes.geometric, positioning}
+
+\graphicspath{{./images/}}
+
+\setbeamercolor{author}{fg=black}
+\setbeamercolor{date}{fg=black}
+
+\setbeamercolor{section in sidebar}{fg=white }
+\setbeamercolor{subsection in sidebar}{fg=white }
+\setbeamercolor{section in sidebar shadbeaed}{fg=white }
+\setbeamercolor{subsection in sidebar shaded}{fg=white }
+
+\usenavigationsymbolstemplate{}
+
+\AtBeginSection[]
+{
+\begin{frame}
+\frametitle{Presentation Layout}
+\tableofcontents[
+  sectionstyle=shaded,
+  currentsection=show
+]
+\end{frame}
+}
+
+\setbeamertemplate{footline}
+{
+  \leavevmode%
+  \hbox{%
+\begin{beamercolorbox}[wd=.45\paperwidth,ht=2.25ex,dp=1ex,center]{author
+in head/foot}%
+    \usebeamerfont{author in head/foot}
+      \insertsection
+  \end{beamercolorbox}%
+\begin{beamercolorbox}[wd=.45\paperwidth,ht=2.25ex,dp=1ex,center]{title
+in head/foot}%
+    \usebeamerfont{title in head/foot}
+      \insertsubsection
+  \end{beamercolorbox}%
+\begin{beamercolorbox}[wd=.10\paperwidth,ht=2.25ex,dp=1ex,right]{date
+in head/foot}%
+    \usebeamerfont{date in head/foot}
+\insertframenumber{} / \inserttotalframenumber\hspace*{2ex}  \end{beamercolorbox}}%
+  \vskip0pt%
+}
+
+\begin{document}
+\title[SHORT TITLE]{
+FULL DECK TITLE}
+\author{AUTHOR NAME}
+\date{}
+
+{
+  \begin{frame}
+    \titlepage
+  \end{frame}
+}
+
+% ---------------------------------------------------------------------
+% Deck content starts here. Add \section{...} calls (each one triggers
+% the AtBeginSection divider frame above) and \begin{frame}...\end{frame}
+% blocks drafted from what the researcher actually gave you -- see
+% frame-patterns.tex for layout patterns (columns+figure, equations,
+% block+figure) to draw from, not to reproduce verbatim.
+% ---------------------------------------------------------------------
+
+\end{document}

@@ -282,6 +282,28 @@ what that decision turns out to be.
   so this is a one-time manual cleanup step, not something Claude Code can
   do itself.
 
+## Presentations
+
+`presentations/<slug>/` holds Beamer (LaTeX) slide decks -- a sibling
+deliverable to `manuscript/`, never inside it. Each deck gets its own
+directory: `presentations/<slug>/main.tex` plus its own `images/` (static
+images) and `generated/` (AD-7-provenanced figures copied from
+`analysis/outputs/` or `manuscript/generated/`-style sources) subfolders.
+Drafting and compiling a deck is driven by the `latex-presentation` skill
+(`.claude/skills/latex-presentation/`), which writes `main.tex` directly
+(no wrapper script, same shape as `subfield-lit-mapping`) from the
+researcher's own Beamer template under its `templates/` folder by default,
+then hands off to the existing `latex-compile` skill to build -- never
+`latexmk`/`pdflatex` invoked directly, and never a second compile-error
+parser reimplemented for slides.
+
+**Deliberately left minimal here.** The directory convention, theming
+default-vs-override rule, figure-provenance and citation rules for slides
+are all defined in `latex-presentation`'s own `SKILL.md`, not duplicated in
+this file. This convention is canonically defined in
+`spec-latex-presentation-generation.md` in the harness planning repo (the
+sibling planning repo's `_bmad-output/implementation-artifacts/`).
+
 ## Obsidian research knowledge base
 
 `knowledge-base/` at the repo root is an Obsidian vault for findings and
