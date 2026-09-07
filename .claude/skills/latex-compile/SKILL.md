@@ -57,7 +57,9 @@ The script always prints exactly one JSON object to stdout, never raw
 - Every entry in both `"errors"` and `"warnings"` uses the same shape:
   `{"file", "line", "package", "message"}`. `"package"` is populated for a
   missing-package/missing-input error (the exact `.sty`/file name) and
-  `null` otherwise (e.g. for a citation warning).
+  `null` otherwise (e.g. for a citation warning). `"file"` can also be
+  `null` -- specifically the Ask-First missing-tool case below, where no
+  `.tex` file was ever reached.
 
 **Line-number caveat (load-bearing, from story 2's spike):** raw
 `pdflatex`'s `l.N` error pointer is unreliable for a missing-input error --

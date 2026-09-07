@@ -51,12 +51,19 @@ from pathlib import Path
 from typing import Any
 
 REQUIRED_TOOLS = ("latexmk", "pdflatex")
+LATEXMK_TIMEOUT_SECONDS = 120
 
 MISSING_INPUT_RE = re.compile(r"Missing input file '([^']+)'")
 UNDEFINED_CITATION_RE = re.compile(
     r"Citation '([^']+)' on page \d+ undefined on input line (\d+)"
 )
 GENERIC_LATEX_ERROR_RE = re.compile(r"^! (.+)$", re.MULTILINE)
+# Matches a \usepackage/\input/\includegraphics call and captures its brace
+# content, so locate_source_line can compare each comma-separated target
+# for an *exact* match rather than an unanchored substring (bug #3).
+SOURCE_TARGET_RE = re.compile(
+    r"\\(?:usepackage|input|includegraphics)(?:\[[^\]]*\])?\{([^}]*)\}"
+)
 
 
 def check_missing_tools() -> list[str]:
@@ -66,28 +73,44 @@ def check_missing_tools() -> list[str]:
 
 def run_latexmk(tex_file: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["latexmk", "-cd", "-pdf", "-interaction=nonstopmode", tex_file],
+        # -g forces latexmk to always fully rerun every rule, ignoring its
+        # own "up to date" cache -- without it, an unchanged source file on
+        # a second invocation makes latexmk print "Nothing to do" and skip
+        # re-emitting its own undefined-citation summary, which silently
+        # produces a stale "warnings": [] false negative (bug #1).
+        ["latexmk", "-g", "-cd", "-pdf", "-interaction=nonstopmode", tex_file],
         capture_output=True,
         text=True,
+        timeout=LATEXMK_TIMEOUT_SECONDS,
     )
 
 
 def locate_source_line(tex_path: Path, needle: str) -> int | None:
     """Scan `tex_path` for a single, unambiguous `\\usepackage`/`\\input`/
     `\\includegraphics` occurrence naming `needle` (the missing file's stem,
-    extension stripped). Returns the 1-indexed line number only when exactly
-    one line matches -- never a guess among several candidates."""
+    extension stripped). A target matches only when it is *exactly* `needle`
+    (bare or with any extension) -- never a substring match, so `foo` can't
+    spuriously match `foobar.sty` elsewhere in the source. `\\usepackage`'s
+    comma-separated multi-package form (`\\usepackage{a,b,c}`) is split and
+    each token checked individually. Returns the 1-indexed line number only
+    when exactly one line matches -- never a guess among several
+    candidates."""
     try:
-        lines = tex_path.read_text().splitlines()
+        lines = tex_path.read_text(errors="replace").splitlines()
     except OSError:
         return None
 
-    pattern = re.compile(
-        r"\\(?:usepackage(?:\[[^\]]*\])?|input|includegraphics(?:\[[^\]]*\])?)"
-        r"\{[^}]*" + re.escape(needle) + r"[^}]*\}"
-    )
-    matches = [line_no + 1 for line_no, line in enumerate(lines) if pattern.search(line)]
-    return matches[0] if len(matches) == 1 else None
+    matching_lines: set[int] = set()
+    for line_no, line in enumerate(lines, start=1):
+        for call_match in SOURCE_TARGET_RE.finditer(line):
+            targets = [t.strip() for t in call_match.group(1).split(",")]
+            for target in targets:
+                target_stem = Path(target).stem if target else target
+                if target == needle or target_stem == needle:
+                    matching_lines.add(line_no)
+                    break
+
+    return next(iter(matching_lines)) if len(matching_lines) == 1 else None
 
 
 def parse_missing_input_errors(log_text: str, file_field: str, tex_path: Path) -> list[dict[str, Any]]:
@@ -117,29 +140,49 @@ def parse_missing_input_errors(log_text: str, file_field: str, tex_path: Path) -
     return errors
 
 
-def parse_generic_errors(log_text: str, file_field: str) -> list[dict[str, Any]]:
-    """Fallback for a failed compile that isn't a recognized missing-input
-    error -- still returns one structured entry, never a raw log dump."""
-    match = GENERIC_LATEX_ERROR_RE.search(log_text)
-    message = (
-        f"latexmk/pdflatex reported: {match.group(1).strip()}"
-        if match
-        else "latexmk reported a non-zero exit or produced no PDF; see the "
-        "compile's own log for detail (not reproduced here per AD-8)."
-    )
-    return [{"file": file_field, "line": None, "package": None, "message": message}]
+def parse_generic_errors(
+    log_text: str, file_field: str, explained_files: set[str] | None = None
+) -> list[dict[str, Any]]:
+    """Fallback for compile-failure detail not already covered by a
+    missing-input match. Collects *every* distinct `! ...` fatal-error line
+    (exact-text dedup) rather than just the first, so multiple unrelated
+    errors in one log are never masked down to a single report (bug #2a).
+    A message that references a file already explained by a missing-input
+    error is skipped, so the same root cause isn't reported twice."""
+    explained_files = explained_files or set()
+    errors: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for match in GENERIC_LATEX_ERROR_RE.finditer(log_text):
+        message = match.group(1).strip()
+        if message in seen:
+            continue
+        seen.add(message)
+        if any(missing_file in message for missing_file in explained_files):
+            continue
+        errors.append(
+            {
+                "file": file_field,
+                "line": None,
+                "package": None,
+                "message": f"latexmk/pdflatex reported: {message}",
+            }
+        )
+    return errors
 
 
 def parse_undefined_citation_warnings(log_text: str, file_field: str) -> list[dict[str, Any]]:
     """Undefined-citation notices (AD-6): the one case latexmk's summary
     gives a directly trustworthy source line for, so it's used as-is."""
     warnings: list[dict[str, Any]] = []
-    seen: set[str] = set()
+    seen: set[tuple[str, int]] = set()
     for match in UNDEFINED_CITATION_RE.finditer(log_text):
         key, line = match.group(1), int(match.group(2))
-        if key in seen:
+        # Dedup on (key, line), not key alone -- the same undefined key
+        # cited on two different source lines is two real occurrences, not
+        # one (bug #6).
+        if (key, line) in seen:
             continue
-        seen.add(key)
+        seen.add((key, line))
         warnings.append(
             {
                 "file": file_field,
@@ -175,7 +218,11 @@ def main() -> int:
     args = parser.parse_args()
     tex_path = Path(args.tex_file)
 
-    if not tex_path.exists():
+    if not tex_path.is_file():
+        # is_file(), not exists() -- a directory argument also satisfies
+        # exists() and would otherwise sail past this guard and fail
+        # confusingly later, e.g. inside with_suffix() or the latexmk call
+        # itself (bug #7).
         print(
             json.dumps(
                 {
@@ -225,7 +272,37 @@ def main() -> int:
         )
         return 1
 
-    result = run_latexmk(args.tex_file)
+    try:
+        result = run_latexmk(args.tex_file)
+    except subprocess.TimeoutExpired:
+        # A pathological input (infinite macro loop, a prompt that slips
+        # past -interaction=nonstopmode) must not block the script
+        # indefinitely with no recovery (bug #4).
+        print(
+            json.dumps(
+                {
+                    "status": "error",
+                    "errors": [
+                        {
+                            "file": args.tex_file,
+                            "line": None,
+                            "package": None,
+                            "message": (
+                                "latexmk did not finish within "
+                                f"{LATEXMK_TIMEOUT_SECONDS}s and was aborted -- "
+                                "possible infinite macro loop or a prompt that "
+                                "slipped past -interaction=nonstopmode. Inspect "
+                                "the .tex source directly rather than "
+                                "re-running blindly."
+                            ),
+                        }
+                    ],
+                    "warnings": [],
+                },
+                indent=2,
+            )
+        )
+        return 1
 
     log_path = tex_path.with_suffix(".log")
     log_text = ""
@@ -236,14 +313,37 @@ def main() -> int:
             log_text = ""
     combined = f"{result.stdout or ''}\n{result.stderr or ''}\n{log_text}"
 
-    errors = parse_missing_input_errors(combined, args.tex_file, tex_path)
+    missing_input_errors = parse_missing_input_errors(combined, args.tex_file, tex_path)
     warnings = parse_undefined_citation_warnings(combined, args.tex_file)
 
     pdf_path = tex_path.with_suffix(".pdf")
     compile_failed = result.returncode != 0 or not pdf_path.exists()
 
+    # Always scan for generic errors not already explained by a missing-input
+    # match when the compile failed -- never skip the scan just because a
+    # missing-input error was already found, so an unrelated second error in
+    # the same compile isn't silently dropped (bug #2b).
+    explained_files = {e["package"] for e in missing_input_errors if e["package"]}
+    generic_errors = (
+        parse_generic_errors(combined, args.tex_file, explained_files)
+        if compile_failed
+        else []
+    )
+    errors = missing_input_errors + generic_errors
+
     if compile_failed and not errors:
-        errors = parse_generic_errors(combined, args.tex_file)
+        errors = [
+            {
+                "file": args.tex_file,
+                "line": None,
+                "package": None,
+                "message": (
+                    "latexmk reported a non-zero exit or produced no PDF; "
+                    "see the compile's own log for detail (not reproduced "
+                    "here per AD-8)."
+                ),
+            }
+        ]
 
     status = "error" if (compile_failed or errors) else "ok"
     print(json.dumps({"status": status, "errors": errors, "warnings": warnings}, indent=2))
