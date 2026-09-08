@@ -10,17 +10,11 @@ AD-2, AD-3, AD-4, AD-8). **Never call the Connector or Better BibTeX
 endpoints directly from conversation** -- always invoke `zotero_file.py`
 and read its parsed JSON output.
 
-Story 5 settled AD-3 as a **closed decision, approved by the researcher on
-2026-09-06**: writes go through Zotero desktop's local Connector HTTP
-endpoint (`POST localhost:23119/connector/saveItems`, real and functional,
-undocumented for third-party use), never Zotero's cloud web API. The
-alternative candidate -- a companion "Zotero Write Endpoint" plugin -- was
-sourced and evaluated but rejected, not pursued further; see the story's
-Spec Change Log for the detailed rationale (star count, maintenance
-posture, etc. -- deliberately not repeated here, since those third-party
-facts will go stale):
-`_bmad-output/specs/spec-ai-research-harness/stories/5-zotero-write-mechanism-spike-filing.md`
-in the sibling planning repo.
+AD-3 is a **closed decision**: writes go through Zotero desktop's local
+Connector HTTP endpoint (`POST localhost:23119/connector/saveItems`, real and
+functional, undocumented for third-party use), never Zotero's cloud web API.
+The alternative candidate was evaluated and rejected -- not to be pursued
+further.
 
 Every resolve/dup-check read goes through Better BibTeX's local JSON-RPC
 endpoint (`localhost:23119/better-bibtex/json-rpc`) -- the only mechanism
@@ -81,10 +75,10 @@ fully local.
 - The `--file`/`--check-duplicate`/`--resolve`/`--get-content` identifier
   JSON is the exact shared flat shape `lit-search` emits per candidate --
   `{"doi","title","arxiv_id"}`. Pass it straight through; no adapter (per
-  the story's Always rule and ARCHITECTURE-SPINE.md's Consistency
-  Conventions). At least one of the three must be a non-empty string --
-  an all-null/all-blank identifier is rejected (`"invalid_input"`) rather
-  than silently reporting "no duplicate found."
+  ARCHITECTURE-SPINE.md's Consistency Conventions). At least one of the
+  three must be a non-empty string -- an all-null/all-blank identifier is
+  rejected (`"invalid_input"`) rather than silently reporting "no duplicate
+  found."
 - `--get-content` resolves live (AD-4, same as `--resolve` -- never cached
   across calls) then, per AD-5, tries each attachment's `.zotero-ft-cache`
   sidecar first (across *every* attachment key before falling through --
@@ -99,9 +93,9 @@ fully local.
   there or anywhere else. If multiple attachments each have usable
   content, the first one found (in Better BibTeX's own `item.attachments`
   order) wins silently -- if that's ever the wrong one in practice, ask
-  the researcher rather than building disambiguation preemptively (per the
-  story's Ask First clause). Set `ZOTERO_STORAGE_PATH` if the researcher's
-  Zotero data directory isn't the default `~/Zotero/storage` (mirrors
+  the researcher rather than building disambiguation preemptively (Ask
+  First). Set `ZOTERO_STORAGE_PATH` if the researcher's Zotero data
+  directory isn't the default `~/Zotero/storage` (mirrors
   `ZOTERO_SQLITE_PATH` for `--list-collection`) -- a missing/misconfigured
   path there is reported as `"zotero_storage_unavailable"`, not silently
   treated as "no content."
@@ -284,13 +278,9 @@ than retrying in a loop), `"resolve_after_write_failed"` /
 `"move_to_collection_failed"` (the write itself succeeded but a follow-up
 step didn't -- the response still carries whatever citekey/item_key/
 library could be recovered; the item already exists, don't file it
-again), `"no_content_available"` (`--get-content` only -- the item was
-found but had no cached fulltext, no local PDF, and no abstract across
-every attachment tried), `"fields_lookup_failed"` (`--get-content` only --
-matched but Better BibTeX hasn't assigned a citekey yet; re-run in a
-moment, distinct from `"no_content_available"`), `"zotero_storage_unavailable"`
-(`--get-content` only -- the configured storage root doesn't exist on
-disk; check/set `ZOTERO_STORAGE_PATH`), or `"unexpected_error"` (an
+again), the `--get-content`-only reasons `"no_content_available"`,
+`"fields_lookup_failed"` and `"zotero_storage_unavailable"` (each described
+under **`--get-content`** above), or `"unexpected_error"` (an
 unhandled failure of some other kind -- still a single JSON object, never
 a raw traceback, per AD-8).
 
@@ -384,9 +374,6 @@ citekey is ready to cite. Don't report an unrunnable check as a passing one.
 - **Never write into `manuscript/references.bib`** to "fix" a missing or
   malformed field -- it is a generated export (AD-2), and any correction goes
   into Zotero itself.
-- This detection/remediation behavior is canonically defined in
-  `spec-zotero-citation-field-contract.md` in the harness planning repo (the
-  sibling planning repo's `_bmad-output/implementation-artifacts/`).
 
 ## Rules
 
@@ -400,13 +387,11 @@ citekey is ready to cite. Don't report an unrunnable check as a passing one.
   citekey doesn't satisfy AD-3/AD-4.
 - **Always** treat `references.bib` as still read-only -- this skill itself
   never writes to that file directly; any addition goes into Zotero
-  directly. Better BibTeX's own auto-export then updates
-  `references.bib` on disk as an indirect side effect of any Zotero write
-  (confirmed live during this story: filing a disposable spike-test item
-  made it appear in `references.bib` on its own, with no code in this
-  skill touching the file) -- that's BBT's normal behavior, not a
-  violation of "read-only," but don't be surprised by it showing up as a
-  changed file in `git status` right after a `--file` call.
+  directly. Better BibTeX's own auto-export then updates `references.bib`
+  on disk as an indirect side effect of any Zotero write -- that's BBT's
+  normal behavior, not a violation of "read-only," but don't be surprised
+  by it showing up as a changed file in `git status` right after a
+  `--file` call.
 - **Never** search or resolve by Better BibTeX citekey -- always DOI/title/
   arXiv id (AD-4; BBT's maintainer disabled citekey search server-side, and
   a cached key would drift from the real library).
@@ -418,9 +403,11 @@ citekey is ready to cite. Don't report an unrunnable check as a passing one.
   skill, tell the researcher exactly which collection/citekey to delete --
   there is no delete endpoint available through the Connector or Better
   BibTeX APIs, so cleanup is a manual step in the Zotero desktop UI.
-  **Outstanding from this story's own live spike/verification testing:**
-  four such test items are still sitting in the `test_ai_research_harness`
-  collection
-  (titles contain "safe to delete (story 5" / "SPIKE-TEST") -- mention this
-  to the researcher the first time this skill comes up in conversation,
-  since nothing else surfaces it to them proactively.
+
+## Provenance
+
+Canonically defined in the harness planning repo (`ai-research-harness-specs`,
+a sibling directory -- not part of this repo): the field-completeness
+detection/remediation behavior above in
+`_bmad-output/implementation-artifacts/spec-zotero-citation-field-contract.md`;
+the `CAP-n`/`AD-n` ids under "Provenance" in `CLAUDE.md`.
