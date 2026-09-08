@@ -1,15 +1,29 @@
 \documentclass{article}
 
-% Citation style: not yet negotiated with the researcher using this project.
-% Before filing or citing real (non-toy) references, run the negotiation in
-% CLAUDE.md's "Citation-format & field contract" section and set
-% `style=` here to whatever is decided -- never leave it on biblatex's
-% implicit `numeric` default by omission.
+% Citation style: not decided for this project instance yet.
+% This project's citation decisions live in `citation-contract.md` at the repo
+% root. If that file is missing, or its citation-style section is still
+% unfilled, run the `onboarding` skill (.claude/skills/onboarding/) to
+% negotiate it with the researcher, then set `style=` here to whatever was
+% decided -- never leave it on biblatex's implicit `numeric` default by
+% omission, and never guess a style to fill the gap.
 \usepackage[backend=biber]{biblatex}
 \addbibresource{references.bib}
 
+\title{Untitled}
+\author{}
+\date{}
+
 \begin{document}
-Urban green space provision can be tracked with a dedicated monitoring tool \cite{vanherzeleMonitoringToolProvision2003a}.
+
+\maketitle
+
+% Manuscript content goes here. This scaffold ships deliberately neutral --
+% no example prose and no example \cite{}, so a fresh instance starts from
+% the researcher's own writing rather than leftover content from building
+% the template. Keep at least one line that renders: a document whose body
+% is only comments produces "No pages of output" and no PDF, which fails
+% `latex-compile`.
 
 \printbibliography
 

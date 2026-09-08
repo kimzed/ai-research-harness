@@ -110,7 +110,7 @@ fully local.
   plus anything `lit-search` already surfaced (title/year/authors/DOI at
   minimum; journal/volume/pages usually aren't in a `lit-search` candidate
   and will show up missing in `resolved_fields` after filing -- that's
-  expected, see Required-field checklist below, not a bug). Its DOI (or
+  expected, see Field-completeness check below, not a bug). Its DOI (or
   title, if it has no DOI) must match the `--file` identifier argument --
   a mismatch is rejected as invalid input rather than filed. Any `"id"`
   field you put in `--item` is silently overwritten -- the script always
@@ -134,6 +134,27 @@ fully local.
   more than one collection (this library genuinely has same-named
   collections nested at different levels) HALTs rather than guessing --
   resolve with `--collection-id` from the `candidates` it returns.
+- **Which collection to pass comes from the contract, not from the UI.**
+  Before any `--file`, read section 2 ("Zotero collection root") of
+  `citation-contract.md` at the repo root:
+  - **If it holds a decided collection root**, pass it explicitly via
+    `--collection-id` (or `--collection-name`) on the `--file` call. Do not
+    rely on whatever happens to be selected in the Zotero desktop UI at
+    filing time -- AD-2 makes the per-project root the point, and a
+    negotiated root that filing silently ignores is worse than no root at
+    all. If the researcher wants this specific paper somewhere else, that is
+    a deliberate one-off they state; confirm it, and don't quietly rewrite
+    the contract on their behalf.
+  - **If section 2 is still `_not-yet-negotiated_`** (or the file is
+    missing), fall back to the existing behavior: `--check-target` first,
+    show the researcher the live library/collection, and confirm with them
+    before filing -- per AD-2's "ask when ambiguous rather than guess."
+    Mention that running the `onboarding` skill would settle it once.
+  - **If the contract names a collection the live target list doesn't have**
+    (renamed or deleted in Zotero since it was negotiated), the call HALTs
+    on `collection_not_found`/`ambiguous_collection_name` -- report that to
+    the researcher and ask whether to re-point the contract, rather than
+    silently falling back to the UI selection.
 - `--override-duplicate-match` (optional, `--file` only): file anyway
   after the researcher reviews a *title-only* fuzzy match (substring
   search, no DOI/arXiv id involved) and confirms it's a different paper.
@@ -155,7 +176,10 @@ Each match carries `"confidence"`: `"doi_exact"` / `"arxiv"` (authoritative
 -- treat as the same paper) or `"title_contains"` (heuristic substring
 match -- judge it, don't assume).
 
-**`--resolve`** -- `{"status":"ok","found":bool, ...same match fields plus "resolved_fields" (CSL-JSON, same key name --file uses), "item_type_csl", "attachment_keys", "collections", "fields_lookup_failed"}`.
+**`--resolve`** -- `{"status":"ok","found":bool, ...same match fields plus "resolved_fields" (CSL-JSON, same key name --file uses), "item_type_csl", "attachment_keys", "collections", "fields_lookup_failed", "note"}`.
+A found item carries `"note"`: the same field-completeness reminder `--file`
+and `--get-content` carry -- a `--resolve` is a touch like any other, so the
+standing check below applies to it too.
 `"collections"` is Better BibTeX's `item.collections` result passed
 through verbatim (a list of `{"key","name","parentCollection"}`) -- this
 skill doesn't independently validate or guarantee that shape, only relays
@@ -192,9 +216,9 @@ it.
   disk -- a configuration problem, not "no content available." Check/set
   `ZOTERO_STORAGE_PATH`.
 - Every hit (`fulltext_index`/`local_pdf`/`abstract`) also carries the same
-  Required-field-checklist reminder `--file` gives on success -- CLAUDE.md's
-  "checked on every touch, including read (CAP-1/CAP-5)" rule applies here
-  too, not just to filing.
+  field-completeness reminder `--file` gives on success -- the "Field-
+  completeness check" section below is a standing check on every touch,
+  including a read (CAP-1/CAP-5), not just filing.
 - Read-only and resolves live every call (AD-4) -- never caches a
   citekey/item-key/attachment-key mapping, and never writes to Zotero or
   `~/Zotero/storage/`.
@@ -231,7 +255,7 @@ Confirm `citekey` back to the researcher in this same turn (AD-3/AD-4) --
 recovered after the write, the response is `"status":"error","reason":
 "resolve_after_write_failed"` instead (the item still exists -- don't
 file it again, re-run `--resolve` shortly). If `"fields_lookup_failed"` is
-`true`, `resolved_fields` is `null` and the Required-field checklist below
+`true`, `resolved_fields` is `null` and the field-completeness check below
 can't run yet -- re-run `--resolve` before telling the researcher the
 citekey is ready to cite. `attachment_keys` is usually empty for a
 metadata-only filing from a search candidate (no PDF attached); that's
@@ -270,17 +294,44 @@ disk; check/set `ZOTERO_STORAGE_PATH`), or `"unexpected_error"` (an
 unhandled failure of some other kind -- still a single JSON object, never
 a raw traceback, per AD-8).
 
-## Required-field checklist (post-file, before confirming the citekey)
+## Field-completeness check (every touch: filed, resolved, or read)
 
-This story is what makes CLAUDE.md's "Citation-format & field contract"
-section exercisable (previously flag-only, no write path to check
-against). After a successful `--file`, run that section's negotiated
-checklist (currently a starter proposal, not yet negotiated for a real
-instance -- negotiate first if this is the first real filing) against
-`resolved_fields`. Better BibTeX returns CSL-JSON, not raw BBT export
-field names -- map like this:
+Run this against `resolved_fields` after every `--file`, `--resolve`, and
+`--get-content` -- not once at setup. It is a **standing** check: the
+researcher edits Zotero directly between calls, so an item that passed
+yesterday can fail today.
 
-| Checklist field (CLAUDE.md) | `resolved_fields` (CSL-JSON) |
+The behavior in this section is **fixed mechanism, not a per-project
+preference**. It applies whatever the project's contract turns out to say.
+
+### Where the checklist comes from
+
+The checklist itself is *not* here and is not a default anyone gets to assume.
+It lives in **`citation-contract.md` at the repo root** -- this instance's
+negotiated citation contract, generated by the `onboarding` skill from
+`.claude/skills/onboarding/templates/citation-contract.md`.
+
+- **If `citation-contract.md` is missing, or the section you need still reads
+  `_not-yet-negotiated_`: HALT.** Tell the researcher the contract hasn't been
+  negotiated for this project and point them at the `onboarding` skill. Never
+  fall through to the template's proposal tables as though they were decided,
+  never invent a field set, and never let a citation-emitting flow proceed on
+  biblatex's implicit `numeric` default by omission.
+- **Reference-type tables are marked independently.** Each type's table in the
+  contract carries its own `Negotiated decision:` marker, so check the marker
+  on the table for *this item's* type -- an item whose own type is still
+  `_not-yet-negotiated_` HALTs even when every other table has been agreed.
+- **If the contract has no row for the item's reference type** (a dataset, a
+  preprint, a report, a web page, software...): HALT, ask the researcher for
+  that type's checklist, and append the answer to `citation-contract.md`.
+  Never silently pass the item, and never silently block it either.
+
+### Field-name mapping
+
+Better BibTeX returns CSL-JSON, not raw BBT export field names. The contract is
+written in biblatex-flavored BBT names, so map like this:
+
+| Checklist field (`citation-contract.md`) | `resolved_fields` (CSL-JSON) |
 | --- | --- |
 | `author`/`editor` | `author` / `editor` (array of `{family, given}`) |
 | `title` | `title` |
@@ -300,14 +351,42 @@ field names -- map like this:
 | `type` (thesis degree level) | `genre` |
 | item type (for picking which checklist table) | `item_type_csl`: `"article-journal"`->`@article`, `"paper-conference"`->`@inproceedings`, `"book"`->`@book`, `"thesis"`->`@thesis` |
 
-On a gap in a **Required** field, follow
-`spec-zotero-citation-field-contract.md`'s external-lookup-then-ask chain
-(DOI resolution -> Semantic Scholar -> OpenAlex, via `lit-search` or a
-direct DOI lookup) before asking the researcher -- never invent a value,
-and never write a recovered value back into Zotero yourself: this skill
-only files *new* items, it has no update-existing-item mode yet, so hand
-any confirmed recovered value to the researcher to enter into Zotero
-themselves (unchanged from that spec's Ask-First rule).
+If `"fields_lookup_failed"` is `true`, `resolved_fields` is `null` and this
+check cannot run yet -- re-run `--resolve` before telling the researcher the
+citekey is ready to cite. Don't report an unrunnable check as a passing one.
+
+### Detection & remediation
+
+- **Required fields only.** A missing **Recommended** or **Optional** field is
+  mentioned to the researcher once and never triggers the lookup chain below.
+- **On a missing or malformed Required field**, before ever asking the
+  researcher to supply it manually, attempt an external lookup for that
+  specific value, in this order: (1) DOI resolution, if a `doi` is present;
+  (2) Semantic Scholar, by DOI or title; (3) OpenAlex, by DOI or title, as
+  cross-check/fallback -- mirroring CAP-3's Semantic-Scholar-primary,
+  OpenAlex-fallback pattern, via `lit-search` or a direct DOI lookup. For
+  `@book`/`@thesis` items (rarely indexed by either), skip straight to asking
+  the researcher directly.
+- **Ask First on anything recovered.** Any value the lookup chain produces is
+  shown to the researcher for confirmation before it is used anywhere. This
+  skill files only *new* items -- it has no update-existing-item mode -- so a
+  confirmed value is handed to the researcher to enter into Zotero themselves,
+  never written back by Claude Code. If the researcher rejects the recovered
+  value, treat the field as unresolved and fall through to the next rule --
+  never re-propose the same rejected value and never invent an alternative.
+- **If external lookup can't resolve the value (or the researcher rejects what
+  it found): HALT and ask the researcher directly.** Never proceed silently and
+  never invent a plausible-looking value. If they confirm the value is
+  genuinely unobtainable (e.g. a pre-DOI-era print-only source with no `doi` or
+  `url`), record it as an **accepted gap for that specific item**, so the
+  standing check stops re-flagging it on every future touch. An accepted gap is
+  per-item; it is never a change to the checklist itself.
+- **Never write into `manuscript/references.bib`** to "fix" a missing or
+  malformed field -- it is a generated export (AD-2), and any correction goes
+  into Zotero itself.
+- This detection/remediation behavior is canonically defined in
+  `spec-zotero-citation-field-contract.md` in the harness planning repo (the
+  sibling planning repo's `_bmad-output/implementation-artifacts/`).
 
 ## Rules
 

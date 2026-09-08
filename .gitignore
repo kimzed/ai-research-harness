@@ -2,6 +2,10 @@
 /data/
 .env*
 
+# Python bytecode artifacts from skill/analysis scripts -- never committed
+__pycache__/
+*.py[co]
+
 # Obsidian's own workspace config -- tool state, not vault content
 .obsidian/
 
@@ -10,6 +14,7 @@
 manuscript/**/*.aux
 manuscript/**/*.bbl
 manuscript/**/*.bcf
+manuscript/**/*.bcf-SAVE-ERROR
 manuscript/**/*.blg
 manuscript/**/*.fdb_latexmk
 manuscript/**/*.fls
