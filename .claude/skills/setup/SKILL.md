@@ -106,9 +106,17 @@ confirm with `--check-target` afterwards.
 
 ## Phase 4 -- Record and hand off
 
-Update `SETUP.md`'s "Installed on this machine" line for anything actually
-installed or verified this session, with the version the probe returned and
-today's date. That file is the machine record; keep it true.
+Each `SETUP.md` section carries a **Verified on this machine** line. Replace
+the `_not-yet-verified_` marker with what the probe actually returned --
+version and path -- plus today's date, for every item you confirmed this
+session. Write only what a probe reported: never copy a version out of
+`SETUP.md`'s own prose, and never mark something verified because the install
+command exited 0 without re-probing it.
+
+Leave the marker in place for anything still missing, declined, or
+unconfirmable. An honest `_not-yet-verified_` beats a line claiming software
+this machine does not have -- that inversion is exactly why these lines are
+reset in a fresh clone.
 
 Then say what remains open, and hand off:
 

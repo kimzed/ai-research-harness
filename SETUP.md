@@ -2,7 +2,13 @@
 
 Machine setup for working in this repo — five pieces: **Claude Code** (the agent doing the work), **VS Code + LaTeX Workshop** (human-facing editor/previewer), **TeX Live** (compiles `manuscript/*.tex`), **Zotero + Better BibTeX** (reference library + the `manuscript/references.bib` feed), and **Obsidian** (human-facing viewer/editor for the `knowledge-base/` vault). A sixth piece, the paper-metadata API (Semantic Scholar/OpenAlex), needs no install — see the `ai-research-harness-specs` repo's `research-tooling-overview.md` §3.
 
-Per the specs repo's `SPEC.md` Assumptions, **v1 targets Cedric's Linux machine only** — all steps below are Linux (Ubuntu/Debian) commands. The pilot's Windows setup is an explicit non-goal for now, revisited as a follow-on once the Linux path is proven.
+**All steps below are Linux (Ubuntu/Debian) commands.** Windows is an explicit non-goal for v1 (see the specs repo's `SPEC.md` Assumptions), revisited once the Linux path is proven. On any other platform, none of the commands below apply — say what you are on rather than substituting an equivalent.
+
+Each section below carries a **Verified on this machine** line. A fresh clone
+ships them all as `_not-yet-verified_` — that is the reset state, not an
+oversight. The `setup` skill (`.claude/skills/setup/`) probes what is actually
+present and fills them in; never treat a line here as evidence that something
+is installed, because this file travels between machines.
 
 ---
 
@@ -16,7 +22,7 @@ curl -fsSL https://claude.ai/install.sh | bash
 ```
 Alternative via npm: `npm install -g @anthropic-ai/claude-code`
 
-**Installed on this machine:** `claude` v2.1.258, at `~/.local/bin/claude`.
+**Verified on this machine:** _not-yet-verified_
 
 ---
 
@@ -35,7 +41,7 @@ Alternative (apt, via Microsoft's repo) — see https://code.visualstudio.com/do
 code --install-extension James-Yu.latex-workshop
 ```
 
-**Installed on this machine (2026-09-02):** VS Code via snap (`code` → `/snap/bin/code`), extension `james-yu.latex-workshop@10.18.0`.
+**Verified on this machine:** _not-yet-verified_
 
 **Usage:**
 1. Open `manuscript/main.tex` in VS Code (open the repo folder, not just the file, so LaTeX Workshop picks up the right project root) — it adds a build button (▶) to the editor toolbar.
@@ -56,10 +62,7 @@ sudo apt update && sudo apt install -y \
 ```
 Covers compiling (`pdflatex`), bibliography/biblatex (`biber`), and build automation (`latexmk`). Use `sudo apt install texlive-full` instead only if you hit a missing-package wall repeatedly (multi-GB).
 
-**Installed on this machine (2026-09-02):** verified working —
-- `latexmk` 4.83
-- `pdfTeX` 3.141592653 (TeX Live 2023/Debian)
-- `biber` 2.19
+**Verified on this machine:** _not-yet-verified_
 
 ---
 
@@ -75,14 +78,16 @@ sudo /opt/Zotero_linux-x86_64/set_launcher_icon
 /opt/Zotero_linux-x86_64/zotero  # first run
 ```
 
-**Installed on this machine (2026-09-02):** Zotero **10.0.1**, at `/opt/zotero` — upgraded from 6.0.35 alongside story 3, since Better BibTeX's current release requires Zotero ≥8.0.1. This also satisfies the `pyzotero`/local-API version requirement (needs Zotero 7+); the Option A vs Option B read-path choice itself remains open (see below).
+**Verified on this machine:** _not-yet-verified_
 
 **Install Better BibTeX:**
 1. Download the latest `.xpi` from https://github.com/retorquere/zotero-better-bibtex/releases
 2. In Zotero: `Tools → Add-ons → ⚙ (gear icon) → Install Add-on From File…` → select the `.xpi`.
 3. Right-click your library/collection → *Export* → translator **Better BibLaTeX** (not plain "Better BibTeX" — its "Keep updated" checkbox is missing/bugged in current BBT releases, and `manuscript/main.tex` uses `biblatex`, which expects BibLaTeX-flavored fields like `date`/`journaltitle` anyway), tick **Keep updated** → point the export at `manuscript/references.bib` in this repo.
 
-**Installed and configured on this machine (2026-09-02):** confirmed working as part of story 3 (Bibliography read + citation emission) — `manuscript/references.bib` now carries a live Better-BibTeX "Keep updated" export (one entry so far, key `vanherzeleMonitoringToolProvision2003a`), and a fresh read of it round-tripped successfully through a real `\cite{key}` and a clean `latexmk`/`biber` compile.
+**Verified on this machine:** _not-yet-verified_ — confirm the "Keep updated" export is
+actually pointed at `manuscript/references.bib`, not just that Better BibTeX is
+installed.
 
 ---
 
@@ -96,7 +101,7 @@ sudo snap install obsidian --classic
 ```
 Alternative (AppImage, no install) — download from https://obsidian.md/download and run directly if you'd rather avoid snap.
 
-**Installed on this machine (2026-09-05):** Obsidian **1.13.7** via snap (`obsidian` → `/snap/bin/obsidian`).
+**Verified on this machine:** _not-yet-verified_
 
 **Usage:**
 1. Launch Obsidian, choose "Open folder as vault", point it at `knowledge-base/` in this repo (not the repo root).
@@ -106,5 +111,5 @@ Alternative (AppImage, no install) — download from https://obsidian.md/downloa
 
 ## Open items
 
-- **Zotero read-path choice** — `zotero-mcp` (Option A, batteries-included) vs `pyzotero` (Option B, no key) — undecided; both pair with Better BibTeX regardless. Zotero is now on 10.0.1, so neither option is version-blocked any more.
+- **Zotero read-path choice** — `zotero-mcp` (Option A, batteries-included) vs `pyzotero` (Option B, no key) — undecided; both pair with Better BibTeX regardless. Both need Zotero 7+, and Better BibTeX's current release needs Zotero ≥8.0.1, so §3's install covers either choice.
 - **Windows/pilot setup** — deferred by design; not covered here.
