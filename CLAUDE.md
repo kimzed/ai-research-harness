@@ -6,6 +6,25 @@ before writing any code or making any commit here. Anything negotiated with
 the particular researcher using an instance is not here; see "Project
 onboarding & the citation contract" below for where that lives.
 
+## Starting a session on a fresh instance
+
+Two states mean this instance is not ready yet. Both are visible from the
+repo without asking the researcher anything, so notice them at the start of
+a session rather than waiting to collide with them:
+
+- **`SETUP.md` still carries `_not-yet-verified_` lines** -- the machine
+  prerequisites have not been confirmed here. The `setup` skill probes them.
+- **No `citation-contract.md` at the repo root** -- this instance has not
+  been onboarded. The `onboarding` skill runs that conversation.
+
+In both cases: **offer once, and never run either skill unasked.** Do not
+re-offer after a decline in the same session -- the researcher knows where
+their own project stands. **Never block what they actually asked for**: do
+the work, and raise the gap only when it is what makes their request fail
+(no TeX Live and they want a compile; no contract and they want a citation).
+**When both are open, setup comes first** -- `onboarding`'s take-stock probes
+Zotero, which needs the software installed before it can answer.
+
 ## Scoped-commit convention (CAP-9 / AD-9)
 
 Every git commit Claude Code makes in this repo is scoped to exactly the
