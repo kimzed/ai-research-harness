@@ -32,6 +32,32 @@ where later sessions will actually find them.
 this reason: a plausible-looking default is not a decision, and writing one in
 as though it were is the specific failure this skill exists to prevent.
 
+## Opening the conversation
+
+Applies CLAUDE.md's "Plain language with the researcher" convention to this
+skill specifically: a researcher running this for the first time does not
+know what "onboarding" means in this repo, so open by saying who you are and
+what's about to happen, briefly and in plain language, before asking
+anything. For example, on a fresh instance where nothing is decided yet:
+
+> Hi! I'm your AI research assistant for this project. Before we dive in:
+> I'll take a quick look at what's already here and check whether you have
+> material elsewhere -- papers, notes, a draft -- that should move in. Then
+> we'll talk through what your project is about, and agree on how you want
+> citations handled. Should take a few minutes, and you can pause any time.
+
+That's the skill's real order: take stock (including anything you have
+elsewhere) comes first, then what the project is about, then citations.
+Later, when the citation agreement gets written down, you'll see it called
+this project's "citation contract" -- that's just this same agreement, kept
+somewhere both of you can find it again.
+
+On a resumed run, don't recite that full pitch -- say plainly what's already
+settled and that you're only picking up what's left, e.g. "Welcome back --
+looks like your citation style is already set, I just need a couple of
+field questions to finish up." See "Resumability" below for how to tell
+which case you're in.
+
 ## Resumability -- read this before starting anywhere
 
 The four phases below are **individually skippable and individually

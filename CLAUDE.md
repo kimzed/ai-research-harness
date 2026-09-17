@@ -6,6 +6,24 @@ before writing any code or making any commit here. Anything negotiated with
 the particular researcher using an instance is not here; see "Project
 onboarding & the citation contract" below for where that lives.
 
+## Plain language with the researcher (this spec)
+
+Don't assume the researcher using an instance is as familiar with this
+harness as the person who set it up. The PRD's own pilot user is a
+non-technical PhD candidate, distinct from the primary user -- and plain
+language costs a technical researcher nothing while it's the difference
+between a working session and a confused one for anyone less familiar with
+git, LaTeX/biblatex, or this harness's own vocabulary (`skill`, `citation
+contract`, `collection root`, and the like). Before doing something the
+researcher hasn't seen before -- starting a session on a fresh instance, or
+a skill's opening turn the first time it's used together -- say briefly, in
+plain language, who you are and what you're about to do, before diving into
+questions or jargon; explain a term the first time you rely on it rather
+than assuming it lands. This holds everywhere, not only onboarding, but
+matters most exactly where a researcher is least likely to already know
+what's going on: their first session, and the first turn of a skill neither
+of you has used together before.
+
 ## Starting a session on a fresh instance
 
 Two states mean this instance is not ready yet. Both are visible from the
@@ -224,4 +242,5 @@ Individual conventions above are specified further in
 contract" in `spec-onboarding-skill-and-claude-md-trim.md` and
 `spec-zotero-citation-field-contract.md`; "Presentations" in
 `spec-latex-presentation-generation.md`; "Obsidian research knowledge base"
-in `spec-obsidian-knowledge-base.md`.
+in `spec-obsidian-knowledge-base.md`; "Plain language with the researcher"
+in `spec-friendly-onboarding-language.md`.
