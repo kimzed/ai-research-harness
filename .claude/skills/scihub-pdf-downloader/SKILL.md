@@ -99,6 +99,16 @@ needed (Sci-Hub blocked/geofenced on this network), `SETUP.md` §5's
 `~/.mcp.json` entry can carry `SCIHUB_HTTPS_PROXY`/`SCIHUB_HTTP_PROXY` in an
 `"env"` block.
 
+**Domain list is hardcoded, not configurable.** Debvex resolves against its
+own internal domain list -- currently (package v0.1.1) `sci-hub.su`,
+`sci-hub.red`, a corrupted entry (`sci-hub.rensci-hub.rusci-hub.st` -- a
+real upstream bug, always fails to resolve, harmless since the other
+domains still get tried), and `sci-hub.box`. Verified 2026-09-17: `.su` and
+`.box` reachable with a VPN, `.red` currently 502 (mirror-side, unrelated to
+blocking). There is no env var to override this list -- if it goes stale,
+that's an upstream fix, not something to work around here. See
+"Troubleshooting: network blocking" below.
+
 **Once the server is available, resolve the identifier:**
 
 - **DOI known:** call `search_scihub_by_doi(doi)`.
@@ -129,12 +139,22 @@ configured, not connected, or erroring in a way that is not a normal
 `not_found` result). **Tell the researcher explicitly that you are falling
 back to Chrome-MCP mirror scraping and why.**
 
-1. Navigate to a page that maintains a live mirror list, such as:
-   - `https://sci-hub.se/` (the primary domain, often redirects)
-   - `https://sci-hub.st/`
-   - `https://sci-hub.ru/`
-   - `https://sci-hub.ee/`
-   - `https://sci-hub.vg/`
+1. Navigate to a page that maintains a live mirror list. **This list rots --
+   Sci-Hub mirrors die, come back, and get blocked constantly. Re-verify it
+   whenever every mirror below fails, and update this file with what you
+   find rather than assuming it's still accurate.** Status as last
+   manually verified 2026-09-17 (see "Troubleshooting: network blocking"
+   below for what "blocked" meant here):
+   - `https://sci-hub.ru/` -- reachable with a VPN; blocked by ISP-level DNS
+     without one. Try this one first if a VPN is available.
+   - `https://sci-hub.se/` -- dead even with a VPN as of the date above,
+     not just blocked -- likely retired. Deprioritize until re-verified.
+   - `https://sci-hub.st/` -- same as `.se`: dead even with a VPN.
+   - `https://sci-hub.ee/` -- not re-verified this round.
+   - `https://sci-hub.vg/` -- not re-verified this round.
+   If every mirror above fails, tell the researcher this list is likely
+   stale and suggest a fresh web search for current Sci-Hub mirrors rather
+   than trusting this file indefinitely.
 
 2. For each candidate mirror, pausing briefly between attempts rather than
    hammering the list in rapid succession:
@@ -173,6 +193,31 @@ back to Chrome-MCP mirror scraping and why.**
 researcher how to proceed** -- never invent another download mechanism.
 
 Once you have a direct PDF URL, go to Step 3.
+
+### Troubleshooting: network blocking
+
+If Option A returns errors/`not_found` for papers that are clearly on
+Sci-Hub, and Option B's mirrors won't load either, the likely cause is
+**ISP-level DNS blocking of Sci-Hub domains** (legally mandated in some
+countries) rather than a bug in this skill. Confirmed real on one
+researcher's machine 2026-09-17: the system DNS resolver returned `NXDOMAIN`
+for Sci-Hub domains, but the same domains resolved and loaded fine through
+a VPN.
+
+**A VPN or proxy fixes this differently for each option, and the difference
+matters:**
+- **Option B (Chrome MCP)** runs inside the actual browser -- any VPN that
+  affects browser traffic helps, including a browser-extension VPN.
+- **Option A (the MCP server)** runs as a separate process outside the
+  browser -- a **browser-extension VPN does nothing for it**. It needs
+  either a system-wide VPN client, or an HTTP/SOCKS proxy your VPN provider
+  exposes, pointed at via `SCIHUB_HTTPS_PROXY`/`SCIHUB_HTTP_PROXY` in the
+  `~/.mcp.json` entry's `"env"` block (`SETUP.md` §5).
+
+If the researcher only has a browser-extension VPN, tell them Option A
+likely won't work from this network regardless of retries, and lean on
+Option B instead -- don't keep retrying Option A expecting the VPN to help
+it.
 
 ## Step 3: Download the PDF
 
