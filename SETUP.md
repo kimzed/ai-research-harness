@@ -1,6 +1,6 @@
 # Setup
 
-Machine setup for working in this repo — five pieces: **Claude Code** (the agent doing the work), **VS Code + LaTeX Workshop** (human-facing editor/previewer), **TeX Live** (compiles `manuscript/*.tex`), **Zotero + Better BibTeX** (reference library + the `manuscript/references.bib` feed), and **Obsidian** (human-facing viewer/editor for the `knowledge-base/` vault). A sixth piece, the paper-metadata API (Semantic Scholar/OpenAlex), needs no install — see the `ai-research-harness-specs` repo's `research-tooling-overview.md` §3. A seventh piece, the **Sci-Hub MCP Server** (§5), is optional and personal — it is never part of a fresh clone's required setup; install it only if and when the researcher wants `scihub-pdf-downloader` to work.
+Machine setup for working in this repo — five pieces: **Claude Code** (the agent doing the work), **VS Code + LaTeX Workshop** (human-facing editor/previewer), **TeX Live** (compiles `manuscript/*.tex`), **Zotero + Better BibTeX** (reference library + the `manuscript/references.bib` feed), and **Obsidian** (human-facing viewer/editor for the `knowledge-base/` vault). A sixth piece, the paper-metadata API (Semantic Scholar/OpenAlex), needs no install — see the `ai-research-harness-specs` repo's `research-tooling-overview.md` §3. A seventh piece, **Claude in Chrome** (§5), is needed only if the researcher wants `scihub-pdf-downloader` to work at all (its default download path). An eighth piece, the **Sci-Hub MCP Server** (§6), is optional and personal on top of that — never part of a fresh clone's required setup; install it only if the researcher already has working Sci-Hub network access or a system-wide VPN/proxy.
 
 **All steps below are Linux (Ubuntu/Debian) commands.** Windows is an explicit non-goal for v1 (see the specs repo's `SPEC.md` Assumptions), revisited once the Linux path is proven. On any other platform, none of the commands below apply — say what you are on rather than substituting an equivalent.
 
@@ -109,9 +109,30 @@ Alternative (AppImage, no install) — download from https://obsidian.md/downloa
 
 ---
 
-## 5. Sci-Hub MCP Server (optional, personal — not part of the required five)
+## 5. Claude in Chrome (needed for `scihub-pdf-downloader`'s default path)
 
-Lets `scihub-pdf-downloader` fetch a paper's PDF directly by DOI/title/keyword instead of falling back to Chrome-MCP mirror scraping. Unlike §0-4, this is never installed as part of setting up a fresh clone: it is the researcher's own personal, per-machine config (`~/.mcp.json`, outside this repo) — install it only if and when you actually want that skill to use it. See `ai-research-harness-specs`' `spec-scihub-downloader-mcp-wiring.md` for why.
+The official Anthropic browser extension that gives Claude Code the `mcp__claude-in-chrome__*` browser-automation tools. `scihub-pdf-downloader`'s default download path (Chrome-MCP mirror scraping, chosen over the MCP-server path in §6 specifically because it needs no separate install and works with whatever VPN — even a browser extension — the researcher already has) depends on it. Nothing else in this repo currently uses it.
+
+**Install:**
+1. Install the "Claude in Chrome" extension from the Chrome Web Store: https://chromewebstore.google.com/detail/claude/fcoeoabgfenejglbffodgkkbkcdhcgfn (works in Chrome, Edge, and other Chromium-based browsers — Brave, Arc, Vivaldi, Opera).
+2. Restart the browser so it registers the native messaging host.
+3. Run Claude Code with the flag once (`claude --chrome`), or persist it for future sessions via the `/chrome` slash command → "Enabled by default".
+
+**Prerequisites:** a direct Anthropic plan (Pro, Max, Team, or Enterprise) authenticated via `/login` -- API keys and long-lived tokens do not support Chrome integration. Not supported under WSL.
+
+**Verify:** run `/chrome` inside Claude Code -- it reports extension/connection status directly. From a shell, confirm the native messaging host config exists (path varies by browser/channel; this is Chrome's):
+```bash
+cat ~/.config/google-chrome/NativeMessagingHosts/com.anthropic.claude_code_browser_extension.json
+```
+Its presence doesn't guarantee the extension is *enabled* in the browser right now -- `/chrome`'s own status report is the authoritative check.
+
+**Verified on this machine:** _not-yet-verified_
+
+---
+
+## 6. Sci-Hub MCP Server (optional, personal — not part of the required five)
+
+Lets `scihub-pdf-downloader` optionally fetch a paper's PDF via a dedicated MCP server instead of §5's Chrome-MCP mirror scraping (the default) -- see that skill's `SKILL.md` for why Chrome-MCP is preferred by default. Unlike §0-4, this is never installed as part of setting up a fresh clone: it is the researcher's own personal, per-machine config (`~/.mcp.json`, outside this repo) — install it only if you already have working network access to Sci-Hub or a system-wide VPN/proxy (a browser-extension VPN does not help this path — see `scihub-pdf-downloader/SKILL.md`'s "Troubleshooting: network blocking"). See `ai-research-harness-specs`' `spec-scihub-downloader-mcp-wiring.md` for why.
 
 **Install (Linux, via `uv` -- this repo's Python tool manager, same as `zotero-mcp`):**
 ```bash

@@ -175,13 +175,13 @@ system-wide VPN/proxy to be useful if Sci-Hub is blocked here), or
 `~/.mcp.json` was edited but Claude Code hasn't been restarted since --
 either way, use Step 1 instead.
 
-**Install/config lives in `SETUP.md` §5, not here** -- that file is this
+**Install/config lives in `SETUP.md` §6, not here** -- that file is this
 repo's single source of truth for install commands (per the `setup` skill's
 own rule: never invent or duplicate an install command). If the researcher
-wants to set this up, walk them through `SETUP.md` §5 (a `uv`-managed venv
+wants to set this up, walk them through `SETUP.md` §6 (a `uv`-managed venv
 with the required `mcp<2` pin, a known packaging-bug workaround, and the
 `~/.mcp.json` entry to add) rather than restating it here. If a proxy is
-needed (Sci-Hub blocked/geofenced on this network), `SETUP.md` §5's
+needed (Sci-Hub blocked/geofenced on this network), `SETUP.md` §6's
 `~/.mcp.json` entry can carry `SCIHUB_HTTPS_PROXY`/`SCIHUB_HTTP_PROXY` in an
 `"env"` block -- but note this only works with an HTTP/SOCKS proxy or
 system-wide VPN, not a browser extension.
@@ -235,7 +235,7 @@ matters:**
   browser -- a **browser-extension VPN does nothing for it**. It needs
   either a system-wide VPN client, or an HTTP/SOCKS proxy your VPN provider
   exposes, pointed at via `SCIHUB_HTTPS_PROXY`/`SCIHUB_HTTP_PROXY` in the
-  `~/.mcp.json` entry's `"env"` block (`SETUP.md` §5).
+  `~/.mcp.json` entry's `"env"` block (`SETUP.md` §6).
 
 This is exactly why Step 1 is the default: it degrades gracefully with
 whatever VPN the researcher already has (including just a browser
