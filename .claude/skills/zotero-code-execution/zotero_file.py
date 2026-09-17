@@ -98,6 +98,24 @@ the researcher explicitly file anyway after reviewing a *title-only* fuzzy
 match that they've confirmed is a different paper -- it never overrides an
 exact DOI/arXiv match (that block cannot be bypassed by a flag).
 
+`--attach-pdf PDF_PATH` (spec-zotero-pdf-filing): also optional for --file,
+for filing a hand-downloaded PDF Claude Code identified by reading it
+natively (never a deterministic parser). After a successful, non-duplicate
+filing, the PDF's bytes are POSTed directly to `/connector/saveAttachment`
+(Zotero's real Connector attachment endpoint, confirmed against its public
+source at `chrome/content/zotero/xpcom/server/server_connector.js` --
+`saveItems` itself ignores any embedded attachment URL by design, per
+`attachmentMode: ATTACHMENT_MODE_IGNORE` in `saveSession.js`; attachments
+are always a separate follow-up call keyed by the same-call `sessionID` and
+the connector item id `saveItems` was given). An earlier loopback-HTTP-
+server design (serving the file for Zotero to fetch itself) was tried
+first and confirmed NOT to work -- `saveItems` never fetches an embedded
+URL -- see the spec's Spec Change Log. `--attach-pdf` never blocks or
+hides the underlying filing: a duplicate match, or the `saveAttachment`
+call itself failing, still leaves the citekey (new or existing) confirmed,
+with PDF_PATH reported back for manual attach in the Zotero desktop UI,
+never silently dropped.
+
 Always prints exactly one JSON object to stdout, never a raw Connector/BBT
 response and never a raw Python traceback (AD-8). Status is "ok" (exit 0),
 "halt" (exit 2 -- an Ask-First condition, e.g. Zotero not running,
@@ -119,6 +137,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import pathlib
 import re
 import sqlite3
 import sys
@@ -137,6 +156,7 @@ REQUEST_TIMEOUT_SECONDS = 15
 # below, which never retries at all.
 RESOLVE_RETRIES = 5
 RESOLVE_RETRY_DELAY_SECONDS = 0.8
+
 
 # --list-collection reads zotero.sqlite directly (see module docstring's
 # "Browsing" section for why). A plain read-only connection is retried a
@@ -278,6 +298,27 @@ def validate_item_matches_identifier(identifier: dict[str, str], item: dict[str,
                 "to the same paper. Fix whichever one is wrong before "
                 "filing."
             )
+
+
+def validate_attach_pdf_path(raw_path: Any) -> str:
+    """Validates --file --attach-pdf's PDF_PATH before any Zotero call is
+    made -- a typo'd/missing path should never file an item and only then
+    discover there is nothing to serve. Returns the absolute path.
+
+    Deliberately does NOT check the file is actually a PDF by content
+    (magic bytes, extension) -- Claude Code is the one that identified this
+    as a PDF by reading it natively (per this story's Intent: no
+    deterministic parsing dependency added here either); this is purely
+    "does a file exist at this path so there's something to POST."
+    """
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise InvalidInputError("--attach-pdf requires a non-empty local file path.")
+    absolute = os.path.abspath(os.path.expanduser(raw_path))
+    if not os.path.isfile(absolute):
+        raise InvalidInputError(
+            f"--attach-pdf path {raw_path!r} does not exist or is not a file."
+        )
+    return absolute
 
 
 # ---------------------------------------------------------------------------
@@ -1027,6 +1068,117 @@ def run_list_collection(ref: str, recursive: bool) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# --file --attach-pdf -- POSTs the local PDF's bytes directly to Zotero's
+# real Connector attachment endpoint, `/connector/saveAttachment`, as a
+# follow-up to a successful `/connector/saveItems` call in the same
+# session. Confirmed against Zotero's public source
+# (chrome/content/zotero/xpcom/server/{server_connector,saveSession}.js):
+# `saveItems` itself always ignores any attachment info embedded in the
+# item (`attachmentMode: ATTACHMENT_MODE_IGNORE`, by design -- "All
+# attachments come from the Connector" -- i.e. a separate call), so an
+# earlier loopback-HTTP-server design (serving the file for Zotero to
+# fetch itself via a URL on the item) was tried first and confirmed NOT to
+# work end to end -- see the spec's Spec Change Log. `saveAttachment`
+# instead expects the sessionID (query param), an `X-Metadata` header
+# (JSON: parentItemID -- the connector item id `saveItems` was given --
+# plus title/url), a Content-Type header, and the raw file bytes as the
+# request body; it returns 201 on success, 400 on bad params, 200 with a
+# text body when the library's files aren't editable.
+# ---------------------------------------------------------------------------
+
+
+def _post_attachment(session_id: str, parent_item_id: str, pdf_path: str, title: str) -> requests.Response:
+    with open(pdf_path, "rb") as fh:
+        data = fh.read()
+    metadata = {
+        "parentItemID": parent_item_id,
+        "title": title,
+        # pathlib's as_uri() percent-encodes spaces/special characters --
+        # downloaded filenames routinely have them (e.g. "Smith et al.
+        # (2024) - Some Paper.pdf"), and an unescaped f"file://{pdf_path}"
+        # would hand Zotero a malformed URI.
+        "url": pathlib.Path(pdf_path).as_uri(),
+    }
+    return requests.post(
+        f"{CONNECTOR_BASE}/saveAttachment",
+        params={"sessionID": session_id},
+        headers={
+            "X-Metadata": json.dumps(metadata),
+            "Content-Type": "application/pdf",
+        },
+        data=data,
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+
+
+def _attach_pdf(session_id: str, parent_item_id: str, pdf_path: str, title: str | None) -> dict[str, Any]:
+    """Builds --file's "attach_pdf" response block by actually performing
+    the attach (a direct POST, not a wait-for-fetch) -- called once, after
+    `saveItems` has succeeded and while the session (and its connector item
+    id) is still live. `title` is the confirmed paper title from --item
+    (falling back to the raw filename only if that's somehow blank) --
+    Zotero shows the attachment under this title, not the often-garbled
+    downloaded filename (e.g. "1-s2.0-S0022328923001234-main.pdf").
+
+    Never silently drops the attach step on failure (this story's Never
+    rule), and never lets a broken attach step take down an otherwise-
+    successful filing that already happened -- every branch below carries
+    "path" so a caller can report it for manual attach even when "attached"
+    is False, and every failure mode around the POST (the file becoming
+    unreadable between validation and this call, Zotero being unreachable/
+    slow, or any other request failure) is caught here rather than
+    propagated, since `_post_attachment`'s own `open()`/`read()` and
+    `requests.post()` calls can each raise on their own -- catching only
+    the two narrowest requests exception types (as an earlier version of
+    this function did) let everything else escape uncaught and get
+    reported by main()'s generic handlers as a total failure, hiding the
+    citekey of an item that had, in fact, already been filed successfully.
+    """
+    attachment_title = title or os.path.basename(pdf_path) or "attachment.pdf"
+    try:
+        response = _post_attachment(session_id, parent_item_id, pdf_path, attachment_title)
+    except (OSError, requests.exceptions.RequestException) as exc:
+        return {
+            "attempted": True,
+            "attached": False,
+            "path": pdf_path,
+            "message": (
+                f"The item was filed, but attaching the PDF failed: {exc} "
+                f"Report the local PDF path ({pdf_path}) to the researcher "
+                "for manual attach in the Zotero desktop UI; do not "
+                "silently drop this."
+            ),
+        }
+    if response.status_code == 201:
+        return {
+            "attempted": True,
+            "attached": True,
+            "path": pdf_path,
+            "message": (
+                "The PDF was attached to the filed item -- confirm it "
+                "appears in Zotero desktop."
+            ),
+        }
+    # Zotero's non-201 response often carries a useful plain-text reason
+    # (e.g. "Library files are not editable.") -- surface it rather than
+    # just the bare status code, capped so a stray HTML/JSON error body
+    # never dumps unboundedly into the message.
+    body_snippet = (response.text or "").strip()[:200]
+    return {
+        "attempted": True,
+        "attached": False,
+        "path": pdf_path,
+        "message": (
+            f"/connector/saveAttachment returned HTTP {response.status_code}"
+            + (f": {body_snippet}" if body_snippet else "")
+            + " -- the attach step was NOT completed. Report the local PDF "
+            f"path ({pdf_path}) to the researcher for manual attach in the "
+            "Zotero desktop UI; do not silently drop this."
+        ),
+    }
+
+
+# ---------------------------------------------------------------------------
 # --file
 # ---------------------------------------------------------------------------
 
@@ -1096,6 +1248,10 @@ def run_file(args: argparse.Namespace, identifier: dict[str, str], item: dict[st
     #    nothing else catches the two arguments silently disagreeing.
     validate_item_matches_identifier(identifier, item)
 
+    # 0b. --attach-pdf's PDF_PATH is validated up front too -- a bad path
+    #     should never be discovered only after an item's already filed.
+    attach_pdf_path = validate_attach_pdf_path(args.attach_pdf) if args.attach_pdf is not None else None
+
     # 1. Live-identifier dup-check first (AD-4) -- filing proceeds only when
     #    none is found, unless the researcher explicitly overrides a
     #    title-only heuristic match (never an exact DOI/arXiv one).
@@ -1103,6 +1259,23 @@ def run_file(args: argparse.Namespace, identifier: dict[str, str], item: dict[st
     public_matches = [_public_match(m) for m in matches]
     blocking = [m for m in matches if m["confidence"] in ("doi_exact", "arxiv")]
     fuzzy_only = matches and not blocking
+
+    # A duplicate found means nothing gets filed, so --attach-pdf never even
+    # attempts a saveAttachment call for this run -- but the researcher
+    # should still be told the PDF they handed over wasn't silently dropped,
+    # per the I/O matrix's "Paper already filed" row: ask whether to attach
+    # it to the existing item instead (this script has no update-existing-
+    # item mode to do that mechanically -- see SKILL.md).
+    attach_pdf_duplicate_note = (
+        (
+            " --attach-pdf was requested but not used: no new item was "
+            "filed, and this script has no update-existing-item mode. Ask "
+            "the researcher whether they want this PDF attached to the "
+            f"existing item above instead -- local path: {attach_pdf_path}."
+        )
+        if attach_pdf_path
+        else ""
+    )
 
     if blocking:
         labels = sorted(
@@ -1118,6 +1291,7 @@ def run_file(args: argparse.Namespace, identifier: dict[str, str], item: dict[st
                 "id -- no new item was filed. Existing citekey(s)/item key(s): "
                 + ", ".join(labels)
                 + ". This cannot be overridden by --override-duplicate-match."
+                + attach_pdf_duplicate_note
             ),
         }
     if fuzzy_only and not args.override_duplicate_match:
@@ -1132,6 +1306,7 @@ def run_file(args: argparse.Namespace, identifier: dict[str, str], item: dict[st
                 "the researcher: if they confirm this is a different paper, "
                 "re-run with --override-duplicate-match; otherwise treat the "
                 "existing citekey above as the paper already filed."
+                + attach_pdf_duplicate_note
             ),
         }
 
@@ -1149,6 +1324,7 @@ def run_file(args: argparse.Namespace, identifier: dict[str, str], item: dict[st
     session_id = uuid.uuid4().hex
     client_item_id = uuid.uuid4().hex[:12]
     payload = {**item, "id": client_item_id}
+
     save_status, _ = connector_post(
         "/saveItems",
         {
@@ -1166,6 +1342,17 @@ def run_file(args: argparse.Namespace, identifier: dict[str, str], item: dict[st
     if not (200 <= save_status < 300):
         raise ConnectorError(f"/connector/saveItems returned unexpected HTTP {save_status}.")
 
+    # 3a. --attach-pdf: saveItems just registered `client_item_id` as this
+    #     session's connector item key (session.addItem, saveSession.js) --
+    #     saveAttachment's parentItemID lookup depends on that, so the
+    #     attach call must happen after saveItems succeeds, and works
+    #     regardless of whether the collection move below succeeds.
+    attach_pdf_result = (
+        _attach_pdf(session_id, client_item_id, attach_pdf_path, item.get("title"))
+        if attach_pdf_path
+        else None
+    )
+
     if target_id:
         move_status, _ = connector_post(
             "/updateSession", {"sessionID": session_id, "target": target_id}
@@ -1175,7 +1362,7 @@ def run_file(args: argparse.Namespace, identifier: dict[str, str], item: dict[st
             # whatever we can recover so the researcher isn't left thinking
             # nothing happened and doesn't risk re-filing a duplicate.
             partial = resolve_item(identifier, retries=RESOLVE_RETRIES) or {}
-            return {
+            result = {
                 "status": "error",
                 "reason": "move_to_collection_failed",
                 "filed": True,
@@ -1192,14 +1379,18 @@ def run_file(args: argparse.Namespace, identifier: dict[str, str], item: dict[st
                 "library": partial.get("library"),
                 "collections": partial.get("collections"),
             }
+            if attach_pdf_result is not None:
+                result["attach_pdf"] = attach_pdf_result
+            return result
 
     # 4. Re-resolve live to recover citekey + item key + attachment key,
     #    confirmed back to the researcher in this same call (AD-3/AD-4).
     #    A match with no citekey yet counts the same as no match at all --
     #    never report "filed": true / "status": "ok" without a citekey.
     resolved = resolve_item(identifier, retries=RESOLVE_RETRIES)
+
     if not resolved or not resolved.get("citekey"):
-        return {
+        result = {
             "status": "error",
             "reason": "resolve_after_write_failed",
             "message": (
@@ -1213,9 +1404,31 @@ def run_file(args: argparse.Namespace, identifier: dict[str, str], item: dict[st
             "item_key": (resolved or {}).get("item_key"),
             "library": (resolved or {}).get("library"),
         }
+        if attach_pdf_result is not None:
+            result["attach_pdf"] = attach_pdf_result
+        return result
 
     fields_lookup_failed = resolved.get("fields_lookup_failed", False)
-    return {
+    message = (
+        f"Filed and confirmed: citekey {resolved.get('citekey')!r} "
+        f"(item key {resolved.get('item_key')}) in "
+        f"{resolved.get('library')}. "
+        + (
+            "WARNING: its fields could not be re-fetched, so the "
+            "field-completeness check cannot run yet -- re-run "
+            "--resolve for this identifier before telling the "
+            "researcher this citekey is ready to cite."
+            if fields_lookup_failed
+            else "Now run the field-completeness check (checklist from "
+            "the repo root's citation-contract.md; see SKILL.md) "
+            "against \"resolved_fields\" before telling the researcher "
+            "this citekey is ready to cite."
+        )
+    )
+    if attach_pdf_result is not None:
+        message += " " + attach_pdf_result["message"]
+
+    result = {
         "status": "ok",
         "filed": True,
         "duplicate_found": False,
@@ -1227,23 +1440,11 @@ def run_file(args: argparse.Namespace, identifier: dict[str, str], item: dict[st
         "item_type_csl": resolved.get("item_type_csl"),
         "resolved_fields": resolved.get("resolved_fields"),
         "fields_lookup_failed": fields_lookup_failed,
-        "message": (
-            f"Filed and confirmed: citekey {resolved.get('citekey')!r} "
-            f"(item key {resolved.get('item_key')}) in "
-            f"{resolved.get('library')}. "
-            + (
-                "WARNING: its fields could not be re-fetched, so the "
-                "field-completeness check cannot run yet -- re-run "
-                "--resolve for this identifier before telling the "
-                "researcher this citekey is ready to cite."
-                if fields_lookup_failed
-                else "Now run the field-completeness check (checklist from "
-                "the repo root's citation-contract.md; see SKILL.md) "
-                "against \"resolved_fields\" before telling the researcher "
-                "this citekey is ready to cite."
-            )
-        ),
+        "message": message,
     }
+    if attach_pdf_result is not None:
+        result["attach_pdf"] = attach_pdf_result
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -1269,6 +1470,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--collection-id", metavar="TREE_VIEW_ID", help='Move the filed item into this collection (e.g. "C83") instead of whatever is currently selected in Zotero. Validated against the live target list.')
     parser.add_argument("--collection-name", metavar="NAME", help="Same as --collection-id but by name (case-insensitive, trimmed); halts if the name is ambiguous or not found.")
     parser.add_argument("--override-duplicate-match", action="store_true", help="File anyway after the researcher reviews a title-only fuzzy match and confirms it is a different paper. Never overrides an exact DOI/arXiv match.")
+    parser.add_argument("--attach-pdf", metavar="PDF_PATH", help="With --file only: after a successful (non-duplicate) filing, POST this local PDF's bytes to Zotero's /connector/saveAttachment endpoint to attach it to the filed item. On a duplicate or a failed attach call, the item's citekey (or existing citekey) is still confirmed and PDF_PATH is reported for manual attach -- never silently dropped.")
     return parser
 
 
@@ -1290,6 +1492,7 @@ def main() -> int:
         or args.collection_id is not None
         or args.collection_name is not None
         or args.override_duplicate_match
+        or args.attach_pdf is not None
     )
     if args.file is not None:
         if not args.researcher_confirmed:
@@ -1299,7 +1502,7 @@ def main() -> int:
         if args.collection_id and args.collection_name:
             parser.error("Pass at most one of --collection-id / --collection-name.")
     elif file_only_flags_set:
-        parser.error("--item/--researcher-confirmed/--collection-id/--collection-name/--override-duplicate-match only apply to --file.")
+        parser.error("--item/--researcher-confirmed/--collection-id/--collection-name/--override-duplicate-match/--attach-pdf only apply to --file.")
     if args.no_recursive and args.list_collection is None:
         parser.error("--no-recursive only applies to --list-collection.")
 

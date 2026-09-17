@@ -1,6 +1,6 @@
 ---
 name: zotero-code-execution
-description: Check for an existing Zotero item by DOI/title/arXiv id, resolve one live, pull its stored PDF/fulltext/abstract content into context, check the current default filing target, or file a researcher-confirmed paper into the local Zotero library. Use when the researcher confirms a candidate paper (from lit-search or otherwise) should be filed into Zotero, when Claude Code needs to read/summarize a paper already in the library, or when it needs to check for a duplicate, re-resolve a citekey, or see which collection filing would land in right now.
+description: Check for an existing Zotero item by DOI/title/arXiv id, resolve one live, pull its stored PDF/fulltext/abstract content into context, check the current default filing target, or file a researcher-confirmed paper into the local Zotero library, optionally attaching a local PDF file to it. Use when the researcher confirms a candidate paper (from lit-search or otherwise) should be filed into Zotero, when the researcher hand-downloaded a PDF outside lit-search and wants it filed with the file attached, when Claude Code needs to read/summarize a paper already in the library, or when it needs to check for a duplicate, re-resolve a citekey, or see which collection filing would land in right now.
 ---
 
 # zotero-code-execution
@@ -44,6 +44,14 @@ uv run .claude/skills/zotero-code-execution/zotero_file.py \
   --file '{"doi":"10.xxxx/yyyy","title":"...","arxiv_id":null}' \
   --item '{"itemType":"journalArticle","title":"...","creators":[{"firstName":"A","lastName":"B","creatorType":"author"}],"date":"2024","DOI":"10.xxxx/yyyy","url":"..."}' \
   --researcher-confirmed
+
+# 4b. Same, plus attach a hand-downloaded local PDF to the newly filed item
+#     (spec-zotero-pdf-filing) -- see "Filing from a hand-downloaded PDF" below.
+uv run .claude/skills/zotero-code-execution/zotero_file.py \
+  --file '{"doi":"10.xxxx/yyyy","title":"...","arxiv_id":null}' \
+  --item '{"itemType":"journalArticle","title":"...","creators":[{"firstName":"A","lastName":"B","creatorType":"author"}],"date":"2024","DOI":"10.xxxx/yyyy","url":"..."}' \
+  --researcher-confirmed \
+  --attach-pdf ~/Downloads/smith-2026-paper.pdf
 
 # 5a. Browse everything already filed in a collection, by id from
 #     --check-target's "targets" (recurses into sub-collections by default).
@@ -154,6 +162,56 @@ fully local.
   search, no DOI/arXiv id involved) and confirms it's a different paper.
   It can never override an exact DOI/arXiv match -- that block is
   unconditional.
+- `--attach-pdf PDF_PATH` (optional, `--file` only; spec-zotero-pdf-filing):
+  after a successful, non-duplicate filing, attach a local PDF -- the same
+  path Claude Code just read natively to identify the paper (see "Filing
+  from a hand-downloaded PDF" below). `PDF_PATH` is validated to exist
+  *before* anything is written -- a bad path errors out as `invalid_input`
+  without touching Zotero. It never changes whether a duplicate blocks
+  filing: on a duplicate, the existing citekey is reported as usual and
+  `PDF_PATH` is echoed back in the message so you can ask the researcher
+  whether to attach it to that existing item instead (this script has no
+  update-existing-item mode to do that mechanically). The PDF is POSTed
+  directly to Zotero's `/connector/saveAttachment` endpoint (confirmed
+  working against real Zotero desktop -- see its `"attach_pdf"` output
+  block below) and never treat a failed attach call as reason to withhold
+  or hide the filing itself.
+
+## Filing from a hand-downloaded PDF
+
+For a PDF the researcher downloaded by hand (outside `lit-search`) and wants
+filed with the file attached -- Claude Code identifies the paper by reading
+the PDF itself, never a deterministic parsing script:
+
+1. **Read the PDF natively** to identify title/authors/date/DOI. If nothing
+   confident comes out (scanned, no visible title/DOI, garbled extraction),
+   HALT and ask the researcher for the title/authors/DOI directly -- never
+   invent metadata.
+2. **Optionally cross-check** via `lit-search --topic` using the title/
+   authors you read, if it would help confirm the identification or fill in
+   fields the PDF itself doesn't carry (journal, volume, pages, abstract).
+3. **Show the researcher** what was read off the PDF (plus any cross-check
+   result) and get their explicit confirmation of *this* candidate before
+   filing -- same "never auto-file" rule as any other candidate (AD-4).
+4. **Dup-check, then file with the PDF attached**:
+   ```bash
+   uv run .claude/skills/zotero-code-execution/zotero_file.py \
+     --check-duplicate '{"doi":"10.xxxx/yyyy","title":"...","arxiv_id":null}'
+   # ... if no blocking match, researcher confirms, then:
+   uv run .claude/skills/zotero-code-execution/zotero_file.py \
+     --file '{"doi":"10.xxxx/yyyy","title":"...","arxiv_id":null}' \
+     --item '{"itemType":"journalArticle","title":"...","creators":[...],"date":"...","DOI":"10.xxxx/yyyy"}' \
+     --researcher-confirmed \
+     --attach-pdf /path/to/the/downloaded.pdf
+   ```
+   (`--file` runs its own internal dup-check anyway -- the standalone
+   `--check-duplicate` call above is only useful if you want to show the
+   researcher the duplicate-or-not verdict *before* asking them to confirm
+   filing, rather than finding out as part of `--file` itself.)
+5. **Report the citekey back**, same as any filing. If `"attach_pdf"."attached"`
+   is `false` (the `saveAttachment` call failed), also report the local PDF
+   path from `"attach_pdf"."path"` so the researcher can drag it into the
+   item manually in Zotero desktop -- never silently drop this step.
 
 ## Output contract
 
@@ -255,11 +313,54 @@ citekey is ready to cite. `attachment_keys` is usually empty for a
 metadata-only filing from a search candidate (no PDF attached); that's
 expected, not a failure -- CAP-5's PDF pull is a separate capability.
 
+**`--file --attach-pdf`** adds an `"attach_pdf"` block to the response
+whenever `--attach-pdf` was passed and an item was actually filed (never
+present on a duplicate-found response, where nothing was ever attached --
+see the note appended to `"message"` instead, per "Filing from a
+hand-downloaded PDF" above):
+```json
+{
+  "attach_pdf": {
+    "attempted": true,
+    "attached": true,
+    "path": "/absolute/path/to/the.pdf",
+    "message": "..."
+  }
+}
+```
+- `"attached": true` -- `/connector/saveAttachment` returned 201; confirm it
+  shows up attached in Zotero desktop (`attachment_keys` on the top-level
+  response will also be non-empty in this case).
+- `"attached": false` -- the `saveAttachment` call itself failed: a non-201
+  response (its response body, if any, is included in `"message"`), the
+  local PDF becoming unreadable between validation and this call, or
+  Zotero being unreachable/slow for that call specifically. This is
+  independent of `"move_to_collection_failed"`/`"resolve_after_write_failed"`
+  -- the attach call runs right after `saveItems` succeeds, before the
+  collection move or citekey resolve, so those two reasons can still show
+  up alongside an `"attached": true` from a moment earlier; they don't
+  cause `"attached": false` by themselves. Either way, the item is still
+  filed and its citekey still confirmed as usual -- `"path"` is the same
+  local PDF path, unattached; report it to the researcher for manual
+  attach in the Zotero desktop UI. Never treat this as the filing itself
+  having failed, and never drop `"path"` silently.
+- The mechanism is a direct POST of the PDF's bytes to
+  `/connector/saveAttachment` with an `X-Metadata` header carrying
+  `parentItemID`/`title`/`url` -- confirmed working end to end against real
+  Zotero desktop (see Provenance). An earlier loopback-HTTP-server design
+  (serving the file for Zotero to fetch itself via a URL embedded on the
+  item) was tried first and confirmed NOT to work -- `saveItems` ignores
+  embedded attachment info by design -- see the spec's Spec Change Log.
+
 **`--file`** duplicate found -- `filed:false, duplicate_found:true`:
 report the existing `citekey` (or, if Better BibTeX hadn't assigned one,
 the `item_key`) from `matches` instead of filing. An exact DOI/arXiv match
 blocks unconditionally; a title-only match is shown to the researcher
-first (see `--override-duplicate-match` above).
+first (see `--override-duplicate-match` above). If `--attach-pdf` was also
+passed, no `"attach_pdf"` block is added (nothing was ever filed to attach
+to) -- `"message"` instead notes the PDF wasn't attached and asks whether
+to attach it to the existing item, per "Filing from a hand-downloaded PDF"
+above.
 
 **`"halt"`** reasons: `"zotero_not_running"` (Zotero desktop unreachable --
 ask the researcher to start it; never retry silently, per the matrix),
@@ -271,14 +372,17 @@ returned -- this now applies to `--collection-id` as well as
 `--collection-name`).
 
 **`"error"`** reasons: `"invalid_input"` (malformed/empty identifier,
-non-object `--item`, or `--item`'s DOI/title disagreeing with the `--file`
-identifier -- fix the input, nothing was attempted), `"zotero_api_error"`
+non-object `--item`, `--item`'s DOI/title disagreeing with the `--file`
+identifier, or a `--attach-pdf` path that doesn't exist -- fix the input,
+nothing was attempted, no Zotero call was made), `"zotero_api_error"`
 / `"http_error"` (an unexpected Connector/BBT failure -- report it rather
 than retrying in a loop), `"resolve_after_write_failed"` /
 `"move_to_collection_failed"` (the write itself succeeded but a follow-up
 step didn't -- the response still carries whatever citekey/item_key/
 library could be recovered; the item already exists, don't file it
-again), the `--get-content`-only reasons `"no_content_available"`,
+again; if `--attach-pdf` was passed and its attach call already ran, its
+`"attach_pdf"` block is still included), the `--get-content`-only reasons
+`"no_content_available"`,
 `"fields_lookup_failed"` and `"zotero_storage_unavailable"` (each described
 under **`--get-content`** above), or `"unexpected_error"` (an
 unhandled failure of some other kind -- still a single JSON object, never
@@ -403,6 +507,15 @@ citekey is ready to cite. Don't report an unrunnable check as a passing one.
   skill, tell the researcher exactly which collection/citekey to delete --
   there is no delete endpoint available through the Connector or Better
   BibTeX APIs, so cleanup is a manual step in the Zotero desktop UI.
+- **Never** identify a hand-downloaded PDF with a deterministic parsing
+  script -- read it natively, exactly as you would read any other PDF
+  Claude Code opens (spec-zotero-pdf-filing's Intent). `--attach-pdf` is
+  the mechanical attach step only, after you and the researcher have
+  already agreed on what the paper is.
+- **Never** report a `--attach-pdf` failure as a filing failure, and never
+  drop the local PDF path silently on one -- an `"attached": false` outcome
+  still means the item was filed and its citekey confirmed; hand the
+  researcher `"attach_pdf"."path"` for manual attach instead.
 
 ## Provenance
 
@@ -410,4 +523,6 @@ Canonically defined in the harness planning repo (`ai-research-harness-specs`,
 a sibling directory -- not part of this repo): the field-completeness
 detection/remediation behavior above in
 `_bmad-output/implementation-artifacts/spec-zotero-citation-field-contract.md`;
-the `CAP-n`/`AD-n` ids under "Provenance" in `CLAUDE.md`.
+the `CAP-n`/`AD-n` ids under "Provenance" in `CLAUDE.md`; the `--attach-pdf`
+mechanism (identification-by-native-reading + `/connector/saveAttachment`)
+in `_bmad-output/implementation-artifacts/spec-zotero-pdf-filing.md`.
