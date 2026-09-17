@@ -244,11 +244,20 @@ silent orphan file:
      --attach-pdf /absolute/path/to/the/downloaded.pdf
    ```
    (Step 0 may already have run a duplicate check on this identifier -- reuse
-   that result instead of repeating it if nothing has changed.) If
-   `--check-duplicate` surfaces a blocking match here, surface it to the
-   researcher instead of proceeding to `--file`. If `--file` itself errors,
-   report the error and the local PDF path -- never imply a citekey was
-   created when it wasn't.
+   that result instead of repeating it if nothing has changed.) A
+   `doi_exact`/`arxiv` match blocks unconditionally -- report the existing
+   citekey, don't file. A `title_contains`-only match is a heuristic: ask the
+   researcher whether it's the same paper.
+   - **Different paper:** re-run `--file` with `--override-duplicate-match`.
+   - **Same paper:** `zotero-code-execution` has no update-existing-item
+     mode -- `--file --attach-pdf` will report `filed: false` and echo the
+     local PDF path back rather than attaching it. Report the existing
+     citekey and tell the researcher to drag the downloaded PDF into that
+     item manually in Zotero desktop; don't retry `--file` for this paper.
+
+   If `--file` itself errors for a reason other than a duplicate, report the
+   error and the local PDF path -- never imply a citekey was created when it
+   wasn't.
 5. **Report the citekey back** to the researcher in the same turn. If
    `"attach_pdf"."attached"` is `false`, also report the local PDF path from
    `"attach_pdf"."path"` so they can attach it manually in Zotero desktop --
