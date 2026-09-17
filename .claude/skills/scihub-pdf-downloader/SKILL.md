@@ -80,22 +80,35 @@ Chrome itself can already reach). Use this first unless the researcher has
 already confirmed the Debvex MCP server (Step 2) is connected and working
 for them.
 
-1. Navigate to a page that maintains a live mirror list. **This list rots --
-   Sci-Hub mirrors die, come back, and get blocked constantly. Re-verify it
-   whenever every mirror below fails, and update this file with what you
-   find rather than assuming it's still accurate.** Status as last
-   manually verified 2026-09-17 (see "Troubleshooting: network blocking"
-   below for what "blocked" meant here):
+1. **This list is a living cache, not a fixed reference -- curate it as you
+   go.** Sci-Hub mirrors die, come back, and get blocked constantly, so
+   treat every attempt as new evidence about the list below, not just a
+   means to a download:
+   - Try mirrors in the order listed (best-known-status first).
+   - **Whenever a mirror's actual behavior disagrees with what's noted
+     next to it** -- a "confirmed working" one is now dead, a "dead" one
+     now works, or you're testing one marked "not re-verified" -- use the
+     `Edit` tool to update that mirror's line in this file with what you
+     observed and today's date, before continuing. Don't wait for the
+     whole list to fail to correct one stale entry.
+   - Reorder the list itself when your update changes the picture (move a
+     newly-dead mirror down, a newly-working one up) so the next session
+     tries the best candidate first.
+   - If every mirror below fails, tell the researcher the whole list is
+     likely stale, suggest a fresh web search for current Sci-Hub mirrors,
+     and add any newly-discovered working mirror to this list.
+
+   Status as last manually verified 2026-09-17 (see "Troubleshooting:
+   network blocking" below for what "blocked" meant here):
    - `https://sci-hub.ru/` -- reachable with a VPN; blocked by ISP-level DNS
      without one. Try this one first if a VPN is available.
-   - `https://sci-hub.se/` -- dead even with a VPN as of the date above,
-     not just blocked -- likely retired. Deprioritize until re-verified.
-   - `https://sci-hub.st/` -- same as `.se`: dead even with a VPN.
    - `https://sci-hub.ee/` -- not re-verified this round.
    - `https://sci-hub.vg/` -- not re-verified this round.
-   If every mirror above fails, tell the researcher this list is likely
-   stale and suggest a fresh web search for current Sci-Hub mirrors rather
-   than trusting this file indefinitely.
+   - `https://sci-hub.se/` -- dead even with a VPN as of the date above,
+     not just blocked -- likely retired. Kept last; drop entirely once a
+     second re-check confirms it's still dead.
+   - `https://sci-hub.st/` -- same as `.se`: dead even with a VPN. Kept
+     last for the same reason.
 
 2. For each candidate mirror, pausing briefly between attempts rather than
    hammering the list in rapid succession:
