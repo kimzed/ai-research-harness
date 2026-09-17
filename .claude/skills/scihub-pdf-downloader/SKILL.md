@@ -4,9 +4,12 @@ description: >
   Use when the user wants to download a scientific article PDF via Sci-Hub.
   The user may provide a DOI, article title, or keywords. This skill first
   checks whether the paper is already filed in Zotero with an attached PDF
-  (via zotero-code-execution), then downloads it via the Debvex Sci-Hub MCP
-  server (preferred) or Chrome MCP mirror scraping (fallback), and offers to
-  file the result into Zotero afterward.
+  (via zotero-code-execution), then downloads it via Chrome MCP mirror
+  scraping (default -- no extra install, works for any researcher) or,
+  optionally, the Debvex Sci-Hub MCP server (only useful if this network can
+  actually reach Sci-Hub already, or the researcher has a working
+  system-wide VPN/proxy), and offers to file the result into Zotero
+  afterward.
 ---
 
 # Sci-Hub PDF Downloader
@@ -24,13 +27,13 @@ user for it. This could be:
 - An article title (e.g., "Attention Is All You Need")
 - Keywords for a search (e.g., "reinforcement learning survey 2023")
 - An arXiv id only, with no DOI -- Sci-Hub and CrossRef mostly don't cover
-  arXiv preprints, so neither Option A's tools nor Option B's mirrors can
-  reliably find these. Point the researcher to arxiv.org directly, or ask
-  whether the paper has since acquired a DOI (e.g. via journal publication).
+  arXiv preprints, so neither download path below reliably finds these.
+  Point the researcher to arxiv.org directly, or ask whether the paper has
+  since acquired a DOI (e.g. via journal publication).
 
-**Before calling any Sci-Hub tool (Option A or Option B), always check
-whether this paper is already filed in Zotero with a usable PDF attached** --
-reuse it instead of re-downloading:
+**Before downloading anything, always check whether this paper is already
+filed in Zotero with a usable PDF attached** -- reuse it instead of
+re-downloading:
 
 - **If a DOI is already known**, run `--get-content` directly (resolves live,
   and returns the best available content in one call):
@@ -69,75 +72,13 @@ reuse it instead of re-downloading:
 This is a reuse check, not a filing operation -- no `--researcher-confirmed`,
 no write, nothing else from `zotero-code-execution` is invoked here.
 
-## Step 1: Resolve and Download via the Sci-Hub MCP Server (Option A)
+## Step 1: Locate and Download via Chrome MCP (default path)
 
-**Option A (preferred): Debvex Sci-Hub MCP Server** --
-`github.com/Debvex/Sci-Hub-MCP-Server`, package `sci-hub-mcp-server`.
-
-The confirmed tool surface -- never call a tool name or signature beyond
-this list:
-
-- `search_scihub_by_doi(doi)`
-- `search_scihub_by_title(title)`
-- `search_scihub_by_keyword(keyword, num_results=10)`
-- `download_scihub_pdf(pdf_url, output_path)`
-- `get_paper_metadata(doi)`
-
-**Check availability first.** Look for a connected `scihub` MCP server among
-this session's available tools before calling any of the above. If it isn't
-there, it's either not installed/configured yet on this machine, or
-`~/.mcp.json` was edited but Claude Code hasn't been restarted since --
-either way, skip straight to Option B (Step 2) after saying so.
-
-**Install/config lives in `SETUP.md` §5, not here** -- that file is this
-repo's single source of truth for install commands (per the `setup` skill's
-own rule: never invent or duplicate an install command). If the researcher
-wants to set this up now, walk them through `SETUP.md` §5 (a `uv`-managed
-venv with the required `mcp<2` pin, a known packaging-bug workaround, and
-the `~/.mcp.json` entry to add) rather than restating it here. If a proxy is
-needed (Sci-Hub blocked/geofenced on this network), `SETUP.md` §5's
-`~/.mcp.json` entry can carry `SCIHUB_HTTPS_PROXY`/`SCIHUB_HTTP_PROXY` in an
-`"env"` block.
-
-**Domain list is hardcoded, not configurable.** Debvex resolves against its
-own internal domain list -- currently (package v0.1.1) `sci-hub.su`,
-`sci-hub.red`, a corrupted entry (`sci-hub.rensci-hub.rusci-hub.st` -- a
-real upstream bug, always fails to resolve, harmless since the other
-domains still get tried), and `sci-hub.box`. Verified 2026-09-17: `.su` and
-`.box` reachable with a VPN, `.red` currently 502 (mirror-side, unrelated to
-blocking). There is no env var to override this list -- if it goes stale,
-that's an upstream fix, not something to work around here. See
-"Troubleshooting: network blocking" below.
-
-**Once the server is available, resolve the identifier:**
-
-- **DOI known:** call `search_scihub_by_doi(doi)`.
-- **Title only:** call `search_scihub_by_title(title)` -- resolves via
-  CrossRef to a DOI + `pdf_url`. If CrossRef finds nothing, stop and ask the
-  researcher for the DOI directly -- do not treat this as an MCP-availability
-  failure and do not fall back to Option B for this reason.
-- **Keywords only:** call `search_scihub_by_keyword(keyword, num_results=10)`
-  -- same CrossRef resolution. Show the researcher each candidate's title,
-  author(s), year, and DOI (cap the list at a handful, e.g. the first 5) and
-  have them pick one before downloading anything. If none of the candidates
-  match what they meant, ask for a DOI or a more specific title instead of
-  guessing.
-- **Optional enrichment:** call `get_paper_metadata(doi)` once a DOI is known
-  to pull title/author/year for confirming the right paper with the
-  researcher. Missing CrossRef coverage means empty metadata fields -- that's
-  expected, not an error; the DOI-based download still works.
-- **A `status: not_found` result is a normal outcome, not a server failure.**
-  Report it to the researcher as-is. It never triggers a fallback to
-  Option B by itself.
-
-Once you have a `pdf_url`, go to Step 3.
-
-## Step 2: Locate the Article via Chrome MCP (Option B -- fallback only)
-
-Use this path only when the Debvex MCP server's tools are unavailable (not
-configured, not connected, or erroring in a way that is not a normal
-`not_found` result). **Tell the researcher explicitly that you are falling
-back to Chrome-MCP mirror scraping and why.**
+This is the default download path -- no install, no MCP server config,
+works for any researcher regardless of network/VPN situation (beyond what
+Chrome itself can already reach). Use this first unless the researcher has
+already confirmed the Debvex MCP server (Step 2) is connected and working
+for them.
 
 1. Navigate to a page that maintains a live mirror list. **This list rots --
    Sci-Hub mirrors die, come back, and get blocked constantly. Re-verify it
@@ -170,9 +111,8 @@ back to Chrome-MCP mirror scraping and why.**
    - Find the search input field (usually an `<input>` with `name="request"`
      or `id="request"`).
    - Enter whatever identifier you have -- the DOI if known, otherwise the
-     raw title text (Step 0 only checks Zotero for existing content, it does
-     not resolve a title to a DOI; that CrossRef resolution only happens in
-     Option A, which is unavailable if you're here).
+     raw title text (Step 0 doesn't resolve a title to a DOI; that CrossRef
+     resolution only happens in Step 2's MCP-server path).
    - Click the submit button (often labeled "Open" or with a magnifying
      glass icon).
    - Wait for the page to load. The article page may contain:
@@ -189,35 +129,106 @@ back to Chrome-MCP mirror scraping and why.**
      `https://sci-hub.se/downloads/.../....pdf` or is embedded in an
      `<embed>` tag.
 
-**If every mirror is CAPTCHA'd, blocked, or down, HALT and ask the
-researcher how to proceed** -- never invent another download mechanism.
+**If every mirror is CAPTCHA'd, blocked, or down:** try Step 2 (the Debvex
+MCP server) if it's connected -- its domain list sometimes differs from the
+one above. If that's not available either, HALT and ask the researcher how
+to proceed -- never invent another download mechanism.
 
 Once you have a direct PDF URL, go to Step 3.
 
+## Step 2: Resolve and Download via the Debvex Sci-Hub MCP Server (optional)
+
+**Optional enhancement, not required.** Lower token cost and adds
+CrossRef-based metadata enrichment over Step 1, but only useful if this
+network can already reach Sci-Hub, or the researcher has a working
+**system-wide** VPN/proxy -- see "Troubleshooting: network blocking" below
+for why a browser-extension VPN doesn't help this path even though it helps
+Step 1. Debvex Sci-Hub MCP Server: `github.com/Debvex/Sci-Hub-MCP-Server`,
+package `sci-hub-mcp-server`.
+
+The confirmed tool surface -- never call a tool name or signature beyond
+this list:
+
+- `search_scihub_by_doi(doi)`
+- `search_scihub_by_title(title)`
+- `search_scihub_by_keyword(keyword, num_results=10)`
+- `download_scihub_pdf(pdf_url, output_path)`
+- `get_paper_metadata(doi)`
+
+**Check availability first.** Look for a connected `scihub` MCP server among
+this session's available tools before calling any of the above. If it isn't
+there, it's either not installed/configured, not worth setting up (needs a
+system-wide VPN/proxy to be useful if Sci-Hub is blocked here), or
+`~/.mcp.json` was edited but Claude Code hasn't been restarted since --
+either way, use Step 1 instead.
+
+**Install/config lives in `SETUP.md` §5, not here** -- that file is this
+repo's single source of truth for install commands (per the `setup` skill's
+own rule: never invent or duplicate an install command). If the researcher
+wants to set this up, walk them through `SETUP.md` §5 (a `uv`-managed venv
+with the required `mcp<2` pin, a known packaging-bug workaround, and the
+`~/.mcp.json` entry to add) rather than restating it here. If a proxy is
+needed (Sci-Hub blocked/geofenced on this network), `SETUP.md` §5's
+`~/.mcp.json` entry can carry `SCIHUB_HTTPS_PROXY`/`SCIHUB_HTTP_PROXY` in an
+`"env"` block -- but note this only works with an HTTP/SOCKS proxy or
+system-wide VPN, not a browser extension.
+
+**Domain list is hardcoded, not configurable.** Debvex resolves against its
+own internal domain list -- currently (package v0.1.1) `sci-hub.su`,
+`sci-hub.red`, a corrupted entry (`sci-hub.rensci-hub.rusci-hub.st` -- a
+real upstream bug, always fails to resolve, harmless since the other
+domains still get tried), and `sci-hub.box`. Verified 2026-09-17: `.su` and
+`.box` reachable with a VPN, `.red` currently 502 (mirror-side, unrelated to
+blocking). There is no env var to override this list -- if it goes stale,
+that's an upstream fix, not something to work around here.
+
+**Once the server is available, resolve the identifier:**
+
+- **DOI known:** call `search_scihub_by_doi(doi)`.
+- **Title only:** call `search_scihub_by_title(title)` -- resolves via
+  CrossRef to a DOI + `pdf_url`. If CrossRef finds nothing, stop and ask the
+  researcher for the DOI directly -- do not treat this as an MCP-availability
+  failure and do not fall back to Step 1 for this reason.
+- **Keywords only:** call `search_scihub_by_keyword(keyword, num_results=10)`
+  -- same CrossRef resolution. Show the researcher each candidate's title,
+  author(s), year, and DOI (cap the list at a handful, e.g. the first 5) and
+  have them pick one before downloading anything. If none of the candidates
+  match what they meant, ask for a DOI or a more specific title instead of
+  guessing.
+- **Optional enrichment:** call `get_paper_metadata(doi)` once a DOI is known
+  to pull title/author/year for confirming the right paper with the
+  researcher. Missing CrossRef coverage means empty metadata fields -- that's
+  expected, not an error; the DOI-based download still works.
+- **A `status: not_found` result is a normal outcome, not a server failure.**
+  Report it to the researcher as-is. It never triggers a fallback to Step 1
+  by itself.
+
+Once you have a `pdf_url`, go to Step 3.
+
 ### Troubleshooting: network blocking
 
-If Option A returns errors/`not_found` for papers that are clearly on
-Sci-Hub, and Option B's mirrors won't load either, the likely cause is
-**ISP-level DNS blocking of Sci-Hub domains** (legally mandated in some
-countries) rather than a bug in this skill. Confirmed real on one
-researcher's machine 2026-09-17: the system DNS resolver returned `NXDOMAIN`
-for Sci-Hub domains, but the same domains resolved and loaded fine through
-a VPN.
+If Step 1's mirrors won't load, or Step 2 returns errors/`not_found` for
+papers that are clearly on Sci-Hub, the likely cause is **ISP-level DNS
+blocking of Sci-Hub domains** (legally mandated in some countries) rather
+than a bug in this skill. Confirmed real on one researcher's machine
+2026-09-17: the system DNS resolver returned `NXDOMAIN` for Sci-Hub domains,
+but the same domains resolved and loaded fine through a VPN.
 
-**A VPN or proxy fixes this differently for each option, and the difference
+**A VPN or proxy fixes this differently for each path, and the difference
 matters:**
-- **Option B (Chrome MCP)** runs inside the actual browser -- any VPN that
+- **Step 1 (Chrome MCP)** runs inside the actual browser -- any VPN that
   affects browser traffic helps, including a browser-extension VPN.
-- **Option A (the MCP server)** runs as a separate process outside the
+- **Step 2 (the MCP server)** runs as a separate process outside the
   browser -- a **browser-extension VPN does nothing for it**. It needs
   either a system-wide VPN client, or an HTTP/SOCKS proxy your VPN provider
   exposes, pointed at via `SCIHUB_HTTPS_PROXY`/`SCIHUB_HTTP_PROXY` in the
   `~/.mcp.json` entry's `"env"` block (`SETUP.md` §5).
 
-If the researcher only has a browser-extension VPN, tell them Option A
-likely won't work from this network regardless of retries, and lean on
-Option B instead -- don't keep retrying Option A expecting the VPN to help
-it.
+This is exactly why Step 1 is the default: it degrades gracefully with
+whatever VPN the researcher already has (including just a browser
+extension), while Step 2 needs infrastructure most researchers won't have
+set up. If the researcher only has a browser-extension VPN (or none), don't
+suggest Step 2 as the fix -- it won't help.
 
 ## Step 3: Download the PDF
 
@@ -225,14 +236,7 @@ Before writing to any `output_path`, check whether a file already exists
 there; if so, pick a non-colliding filename (e.g. append the DOI or a
 counter) instead of silently overwriting it.
 
-**Option A (MCP server available):** call
-`download_scihub_pdf(pdf_url, output_path)` directly, with `output_path`
-set to the researcher's current directory (or wherever they specified) plus
-a sensible filename. If the call errors or reports failure, tell the
-researcher and fall back to Option B rather than proceeding as if it
-succeeded.
-
-**Option B (Chrome MCP fallback):**
+**Via Chrome MCP (Step 1):**
 1. Use Chrome MCP to open the PDF URL in a new tab and confirm it loads.
 2. Download the file with `curl`, if a shell is available in your
    environment:
@@ -247,7 +251,14 @@ succeeded.
 3. If no shell is available, tell the researcher the direct PDF URL so they
    can save it themselves.
 
-**After either option, verify the download before trusting it:** confirm
+**Via the Debvex MCP server (Step 2):** call
+`download_scihub_pdf(pdf_url, output_path)` directly, with `output_path`
+set to the researcher's current directory (or wherever they specified) plus
+a sensible filename. If the call errors or reports failure, tell the
+researcher and fall back to Step 1 rather than proceeding as if it
+succeeded.
+
+**After either path, verify the download before trusting it:** confirm
 the file exists on disk and that its first bytes are `%PDF` (not an HTML
 CAPTCHA/error/paywall page saved with a `.pdf` extension). If the file is
 missing or isn't actually a PDF, delete any partial/bad file, report the
@@ -255,12 +266,12 @@ failure to the researcher, and do not proceed to Step 4.
 
 ## Step 4: Offer to File the Download into Zotero
 
-After a successful download (either option), the PDF is not left as a
+After a successful download (either path), the PDF is not left as a
 silent orphan file:
 
 1. **Confirm it's the right paper** before offering to file anything: check
-   the downloaded title/author/year (from `get_paper_metadata`/CrossRef
-   resolution in Step 1, or from the mirror page in Step 2) against what the
+   the downloaded title/author/year (from the mirror page in Step 1, or
+   `get_paper_metadata`/CrossRef resolution in Step 2) against what the
    researcher actually asked for. If there's any doubt -- an ambiguous
    keyword match, or a title-search result that only loosely matches --
    confirm with the researcher which paper this actually is before asking
@@ -271,13 +282,13 @@ silent orphan file:
    file).
 3. **On "no":** stop here. Report the local path and leave it as-is.
 4. **On "yes":** assemble the item metadata you already have (DOI, title,
-   authors, year -- from `get_paper_metadata`/CrossRef resolution in Step 1,
-   or from what the researcher told you) and show it to them for
-   confirmation. If they don't confirm it as-is, pause and revise the
-   metadata with them rather than filing anything. Once confirmed, invoke
-   the existing filing flow from `zotero-code-execution` (per its "Filing
-   from a hand-downloaded PDF" walkthrough) -- no new code needed here, just
-   wiring the call:
+   authors, year -- from the mirror page in Step 1, `get_paper_metadata`/
+   CrossRef resolution in Step 2, or from what the researcher told you) and
+   show it to them for confirmation. If they don't confirm it as-is, pause
+   and revise the metadata with them rather than filing anything. Once
+   confirmed, invoke the existing filing flow from `zotero-code-execution`
+   (per its "Filing from a hand-downloaded PDF" walkthrough) -- no new code
+   needed here, just wiring the call:
    ```bash
    uv run .claude/skills/zotero-code-execution/zotero_file.py \
      --check-duplicate '{"doi":"10.xxxx/yyyy","title":"...","arxiv_id":null}'
