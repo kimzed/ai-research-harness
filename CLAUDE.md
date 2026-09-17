@@ -227,20 +227,3 @@ researcher-approved content.
 - A note about a specific paper can link to that paper's Zotero citekey
   (or a DOI/title if it isn't filed yet) when that's a natural thing to
   do -- not a mandatory schema every note must follow.
-
-## Provenance
-
-Canonically defined in the harness planning repo (`ai-research-harness-specs`,
-a sibling directory -- not part of this repo):
-
-- `CAP-1`..`CAP-9` -- `_bmad-output/specs/spec-ai-research-harness/SPEC.md`
-- `AD-1`..`AD-9` -- `_bmad-output/planning-artifacts/architecture/architecture-ai-research-harness-2026-09-02/ARCHITECTURE-SPINE.md`
-- `SM-C1` -- `_bmad-output/planning-artifacts/prds/prd-ai-research-harness-2026-09-02/prd.md`
-
-Individual conventions above are specified further in
-`_bmad-output/implementation-artifacts/`: "Project onboarding & the citation
-contract" in `spec-onboarding-skill-and-claude-md-trim.md` and
-`spec-zotero-citation-field-contract.md`; "Presentations" in
-`spec-latex-presentation-generation.md`; "Obsidian research knowledge base"
-in `spec-obsidian-knowledge-base.md`; "Plain language with the researcher"
-in `spec-friendly-onboarding-language.md`.
