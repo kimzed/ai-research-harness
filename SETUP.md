@@ -1,6 +1,6 @@
 # Setup
 
-Machine setup for working in this repo — five pieces: **Claude Code** (the agent doing the work), **VS Code + LaTeX Workshop** (human-facing editor/previewer), **TeX Live** (compiles `manuscript/*.tex`), **Zotero + Better BibTeX** (reference library + the `manuscript/references.bib` feed), and **Obsidian** (human-facing viewer/editor for the `knowledge-base/` vault). A sixth piece, the paper-metadata API (Semantic Scholar/OpenAlex), needs no install — see the `ai-research-harness-specs` repo's `research-tooling-overview.md` §3.
+Machine setup for working in this repo — five pieces: **Claude Code** (the agent doing the work), **VS Code + LaTeX Workshop** (human-facing editor/previewer), **TeX Live** (compiles `manuscript/*.tex`), **Zotero + Better BibTeX** (reference library + the `manuscript/references.bib` feed), and **Obsidian** (human-facing viewer/editor for the `knowledge-base/` vault). A sixth piece, the paper-metadata API (Semantic Scholar/OpenAlex), needs no install — see the `ai-research-harness-specs` repo's `research-tooling-overview.md` §3. A seventh piece, the **Sci-Hub MCP Server** (§5), is optional and personal — it is never part of a fresh clone's required setup; install it only if and when the researcher wants `scihub-pdf-downloader` to work.
 
 **All steps below are Linux (Ubuntu/Debian) commands.** Windows is an explicit non-goal for v1 (see the specs repo's `SPEC.md` Assumptions), revisited once the Linux path is proven. On any other platform, none of the commands below apply — say what you are on rather than substituting an equivalent.
 
@@ -106,6 +106,45 @@ Alternative (AppImage, no install) — download from https://obsidian.md/downloa
 **Usage:**
 1. Launch Obsidian, choose "Open folder as vault", point it at `knowledge-base/` in this repo (not the repo root).
 2. The vault starts empty by design — no folder structure is imposed upfront; how notes get organized emerges from actual use (see `CLAUDE.md`'s "Obsidian research knowledge base" section). `[[wikilinks]]` between notes render as clickable links and populate the graph view automatically, no configuration needed.
+
+---
+
+## 5. Sci-Hub MCP Server (optional, personal — not part of the required five)
+
+Lets `scihub-pdf-downloader` fetch a paper's PDF directly by DOI/title/keyword instead of falling back to Chrome-MCP mirror scraping. Unlike §0-4, this is never installed as part of setting up a fresh clone: it is the researcher's own personal, per-machine config (`~/.mcp.json`, outside this repo) — install it only if and when you actually want that skill to use it. See `ai-research-harness-specs`' `spec-scihub-downloader-mcp-wiring.md` for why.
+
+**Install (Linux):**
+```bash
+pip install "sci-hub-mcp-server" "mcp<2"
+```
+Requires Python 3.11+. The `mcp<2` pin is required as of package v0.1.1 (2026-09-17) — an unpinned install pulls `mcp` 2.x, which renamed `mcp.server.fastmcp.FastMCP`, so the server fails to import without it.
+
+**Known packaging bug (still present as of v0.1.1) — check first, since a later release may have fixed it:**
+```bash
+python -c "import sci_hub_mcp_server.sci_hub_server" && echo OK
+```
+If that fails with `ModuleNotFoundError: No module named 'sci_hub_mcp_server'`, the installed package ships its code under a hyphenated directory name (`sci-hub-mcp-server`) that its own `__init__.py` can't import under that name. Work around it (safe to re-run, including after an upgrade):
+```bash
+SITE=$(python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")
+rm -rf "$SITE/sci_hub_mcp_server"
+cp -r "$SITE/sci-hub-mcp-server" "$SITE/sci_hub_mcp_server"
+```
+Re-run the import check above to confirm it now prints `OK`.
+
+**Add to your personal `~/.mcp.json`** (never commit this file or add this entry to the repo/template):
+```json
+{
+  "mcpServers": {
+    "scihub": {
+      "command": "python",
+      "args": ["-m", "sci_hub_mcp_server.sci_hub_server"]
+    }
+  }
+}
+```
+Use whichever `python` has the package installed. Restart Claude Code after editing `~/.mcp.json`. Package license is GPL-3.0-or-later. See `scihub-pdf-downloader/SKILL.md` for the confirmed tool surface and usage.
+
+**Verified on this machine:** _not-yet-verified_ — and not expected to be, unless the researcher opted into this.
 
 ---
 

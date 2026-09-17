@@ -87,70 +87,17 @@ this list:
 this session's available tools before calling any of the above. If it isn't
 there, it's either not installed/configured yet on this machine, or
 `~/.mcp.json` was edited but Claude Code hasn't been restarted since --
-either way, skip straight to Option B (Step 2) after saying so, or offer the
-install/config below if the researcher wants to set it up now.
+either way, skip straight to Option B (Step 2) after saying so.
 
-**Install (personal machine -- never add this to the repo):**
-```bash
-pip install "sci-hub-mcp-server" "mcp<2"
-```
-Requires Python 3.11+. The `mcp<2` pin is required today, not optional --
-verified against the actual PyPI package (v0.1.1, 2026-09-17): its
-`pyproject.toml` declares an unbounded `mcp>=1.0.0`, so a plain
-`pip install sci-hub-mcp-server` currently pulls `mcp` 2.x, which renamed
-`mcp.server.fastmcp.FastMCP` -- the server fails to import at all without
-this pin (`ModuleNotFoundError: No module named 'mcp.server.fastmcp'`).
-
-**Known packaging bug -- confirmed by actually installing the package in a
-clean virtualenv, but check first whether it's still present, since a later
-upstream release may fix it:**
-```bash
-python -c "import sci_hub_mcp_server.sci_hub_server" && echo OK
-```
-If that prints `OK`, skip the rest of this box -- the server already
-imports cleanly. If it fails with
-`ModuleNotFoundError: No module named 'sci_hub_mcp_server'`, the bug is
-still present as of package v0.1.1 (2026-09-17): the published package
-(both the PyPI wheel and the `main` branch source tree under `src/`) ships
-its code in a directory literally named `sci-hub-mcp-server` (with
-hyphens), but the package's own `__init__.py` does
-`from sci_hub_mcp_server.sci_hub_search import ...` -- an absolute import
-expecting the underscored name. Neither the `sci-hub-mcp-server` console
-script (no `[project.scripts]` entry exists in `pyproject.toml` despite the
-README describing one) nor `python -m sci_hub_mcp_server.sci_hub_server`
-will work from a stock `pip install` until this is fixed upstream. Work
-around it by replacing the installed directory with an underscored copy
-(the `rm -rf` first makes this safe to re-run, including after an upgrade
-that recreates the hyphenated directory):
-```bash
-SITE=$(python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")
-rm -rf "$SITE/sci_hub_mcp_server"
-cp -r "$SITE/sci-hub-mcp-server" "$SITE/sci_hub_mcp_server"
-```
-After both the `mcp<2` pin and this rename, re-run the import check above to
-confirm it now prints `OK` -- verified directly, not assumed from the
-README.
-
-**Add this entry to the researcher's own `~/.mcp.json`** (this is personal,
-per-machine config -- it is never committed to this repo or its template;
-only document it here):
-```json
-{
-  "mcpServers": {
-    "scihub": {
-      "command": "python",
-      "args": ["-m", "sci_hub_mcp_server.sci_hub_server"]
-    }
-  }
-}
-```
-Use whichever `python` has the package installed (a venv's interpreter path,
-or add `"cwd"`/`"env": {"PYTHONPATH": "..."}` as needed for your setup). If a
-proxy is needed (Sci-Hub blocked/geofenced on this network), add
-`SCIHUB_HTTPS_PROXY` and/or `SCIHUB_HTTP_PROXY` to that same entry's `"env"`
-block. Restart Claude Code after editing `~/.mcp.json` for the server to
-connect. Package license is GPL-3.0-or-later -- informational only, not a
-blocker for this personal, single-machine research use.
+**Install/config lives in `SETUP.md` §5, not here** -- that file is this
+repo's single source of truth for install commands (per the `setup` skill's
+own rule: never invent or duplicate an install command). If the researcher
+wants to set this up now, walk them through `SETUP.md` §5 (pip install with
+the required `mcp<2` pin, a known packaging-bug workaround, and the
+`~/.mcp.json` entry to add) rather than restating it here. If a proxy is
+needed (Sci-Hub blocked/geofenced on this network), `SETUP.md` §5's
+`~/.mcp.json` entry can carry `SCIHUB_HTTPS_PROXY`/`SCIHUB_HTTP_PROXY` in an
+`"env"` block.
 
 **Once the server is available, resolve the identifier:**
 
