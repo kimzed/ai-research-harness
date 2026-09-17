@@ -113,19 +113,29 @@ Alternative (AppImage, no install) — download from https://obsidian.md/downloa
 
 Lets `scihub-pdf-downloader` fetch a paper's PDF directly by DOI/title/keyword instead of falling back to Chrome-MCP mirror scraping. Unlike §0-4, this is never installed as part of setting up a fresh clone: it is the researcher's own personal, per-machine config (`~/.mcp.json`, outside this repo) — install it only if and when you actually want that skill to use it. See `ai-research-harness-specs`' `spec-scihub-downloader-mcp-wiring.md` for why.
 
-**Install (Linux):**
+**Install (Linux, via `uv` -- this repo's Python tool manager, same as `zotero-mcp`):**
 ```bash
-pip install "sci-hub-mcp-server" "mcp<2"
+uv venv --python 3.11 ~/.venvs/sci-hub-mcp-server
+uv pip install --python ~/.venvs/sci-hub-mcp-server/bin/python "sci-hub-mcp-server" "mcp<2"
 ```
-Requires Python 3.11+. The `mcp<2` pin is required as of package v0.1.1 (2026-09-17) — an unpinned install pulls `mcp` 2.x, which renamed `mcp.server.fastmcp.FastMCP`, so the server fails to import without it.
+`uv tool install sci-hub-mcp-server` does **not** work -- confirmed by actually
+running it: the package ships no `[project.scripts]` entry point, so `uv tool
+install` refuses it outright (`No executables are provided by
+sci-hub-mcp-server`) rather than installing a broken shim. A plain venv
+sidesteps that, since it's invoked as `python -m ...` (below), not as a
+console command. Requires Python 3.11+; the `mcp<2` pin is required as of
+package v0.1.1 (2026-09-17) -- an unpinned install pulls `mcp` 2.x, which
+renamed `mcp.server.fastmcp.FastMCP`, so the server fails to import without
+it. `uv` resolves `"sci-hub-mcp-server"` and `"mcp<2"` together, same as
+`pip install` would with both specifiers.
 
 **Known packaging bug (still present as of v0.1.1) — check first, since a later release may have fixed it:**
 ```bash
-python -c "import sci_hub_mcp_server.sci_hub_server" && echo OK
+~/.venvs/sci-hub-mcp-server/bin/python -c "import sci_hub_mcp_server.sci_hub_server" && echo OK
 ```
-If that fails with `ModuleNotFoundError: No module named 'sci_hub_mcp_server'`, the installed package ships its code under a hyphenated directory name (`sci-hub-mcp-server`) that its own `__init__.py` can't import under that name. Work around it (safe to re-run, including after an upgrade):
+If that fails with `ModuleNotFoundError: No module named 'sci_hub_mcp_server'`, the installed package ships its code under a hyphenated directory name (`sci-hub-mcp-server`) that its own `__init__.py` can't import under that name. Work around it (safe to re-run, including after an upgrade -- confirmed against this exact venv):
 ```bash
-SITE=$(python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")
+SITE=$(~/.venvs/sci-hub-mcp-server/bin/python -c "import sysconfig; print(sysconfig.get_paths()['purelib'])")
 rm -rf "$SITE/sci_hub_mcp_server"
 cp -r "$SITE/sci-hub-mcp-server" "$SITE/sci_hub_mcp_server"
 ```
@@ -136,13 +146,13 @@ Re-run the import check above to confirm it now prints `OK`.
 {
   "mcpServers": {
     "scihub": {
-      "command": "python",
+      "command": "/home/YOUR_USERNAME/.venvs/sci-hub-mcp-server/bin/python",
       "args": ["-m", "sci_hub_mcp_server.sci_hub_server"]
     }
   }
 }
 ```
-Use whichever `python` has the package installed. Restart Claude Code after editing `~/.mcp.json`. Package license is GPL-3.0-or-later. See `scihub-pdf-downloader/SKILL.md` for the confirmed tool surface and usage.
+Use the venv's own python (an absolute path -- `~` is not expanded inside `~/.mcp.json`, spell out `/home/...`), since it's an isolated venv, not something on `PATH`. Restart Claude Code after editing `~/.mcp.json`. Package license is GPL-3.0-or-later. See `scihub-pdf-downloader/SKILL.md` for the confirmed tool surface and usage.
 
 **Verified on this machine:** _not-yet-verified_ — and not expected to be, unless the researcher opted into this.
 

@@ -92,9 +92,9 @@ either way, skip straight to Option B (Step 2) after saying so.
 **Install/config lives in `SETUP.md` §5, not here** -- that file is this
 repo's single source of truth for install commands (per the `setup` skill's
 own rule: never invent or duplicate an install command). If the researcher
-wants to set this up now, walk them through `SETUP.md` §5 (pip install with
-the required `mcp<2` pin, a known packaging-bug workaround, and the
-`~/.mcp.json` entry to add) rather than restating it here. If a proxy is
+wants to set this up now, walk them through `SETUP.md` §5 (a `uv`-managed
+venv with the required `mcp<2` pin, a known packaging-bug workaround, and
+the `~/.mcp.json` entry to add) rather than restating it here. If a proxy is
 needed (Sci-Hub blocked/geofenced on this network), `SETUP.md` §5's
 `~/.mcp.json` entry can carry `SCIHUB_HTTPS_PROXY`/`SCIHUB_HTTP_PROXY` in an
 `"env"` block.
